@@ -4,21 +4,25 @@ import (
 	"fmt"
 )
 
+// ConsumeBool consumes a boolean payload from the from of data and returns data.
 func ConsumeBool(data []byte, payload *bool) []byte {
 	*payload = data[0] != 0
 	return data[1:]
 }
 
+// ConsumeUint32 consumes a uint32 payload from the from of data and returns data.
 func ConsumeUint32(data []byte, payload *uint32) []byte {
 	*payload = (uint32(data[3]) << 24) | (uint32(data[2]) << 16) | (uint32(data[1]) << 8) | uint32(data[0])
 	return data[4:]
 }
 
+// ConsumeUint16 consumes a uint16 payload from the from of data and returns data.
 func ConsumeUint16(data []byte, payload *uint16) []byte {
 	*payload = (uint16(data[1]) << 8) | uint16(data[0])
 	return data[2:]
 }
 
+// ConsumeStreamId consumes a StreamId payload from the from of data and returns data.
 func ConsumeStreamId(data []byte, payload *StreamId) []byte {
 	var p uint16
 	data = ConsumeUint16(data, &p)
@@ -26,6 +30,7 @@ func ConsumeStreamId(data []byte, payload *StreamId) []byte {
 	return data
 }
 
+// ConsumeNodeId consumes a NodeId payload from the from of data and returns data.
 func ConsumeNodeId(data []byte, payload *NodeId) []byte {
 	var p uint16
 	data = ConsumeUint16(data, &p)
@@ -33,6 +38,7 @@ func ConsumeNodeId(data []byte, payload *NodeId) []byte {
 	return data
 }
 
+// ConsumeSequenceId consumes a SequenceId payload from the from of data and returns data.
 func ConsumeSequenceId(data []byte, payload *SequenceId) []byte {
 	var p uint32
 	data = ConsumeUint32(data, &p)
@@ -40,6 +46,7 @@ func ConsumeSequenceId(data []byte, payload *SequenceId) []byte {
 	return data
 }
 
+// ConsumeStringWithLength consumes a string payload from the from of data and returns data.
 func ConsumeStringWithLength(data []byte, payload *string) ([]byte, error) {
 	var length uint16
 	data = ConsumeUint16(data, &length)
@@ -51,6 +58,7 @@ func ConsumeStringWithLength(data []byte, payload *string) ([]byte, error) {
 	return data[int(length):], nil
 }
 
+// ConsumeBytesWithLength consumes a bytes payload from the from of data and returns data.
 func ConsumeBytesWithLength(data []byte, payload *[]byte) ([]byte, error) {
 	var length uint16
 	data = ConsumeUint16(data, &length)
@@ -63,6 +71,7 @@ func ConsumeBytesWithLength(data []byte, payload *[]byte) ([]byte, error) {
 	return data[int(length):], nil
 }
 
+// AppendBool appends a boolean payload to data and returns data.
 func AppendBool(data []byte, payload bool) []byte {
 	if payload {
 		return append(data, 1)
@@ -70,6 +79,7 @@ func AppendBool(data []byte, payload bool) []byte {
 	return append(data, 0)
 }
 
+// AppendUint32 appends a uint32 payload to data and returns data.
 func AppendUint32(data []byte, payload uint32) []byte {
 	data = append(data, byte(payload&0xff))
 	payload = payload >> 8
@@ -80,24 +90,29 @@ func AppendUint32(data []byte, payload uint32) []byte {
 	return append(data, byte(payload&0xff))
 }
 
+// AppendUint16 appends a uint16 payload to data and returns data.
 func AppendUint16(data []byte, payload uint16) []byte {
 	data = append(data, byte(payload&0xff))
 	payload = payload >> 8
 	return append(data, byte(payload&0xff))
 }
 
+// AppendStreamId appends a StreamId payload to data and returns data.
 func AppendStreamId(data []byte, payload StreamId) []byte {
 	return AppendUint16(data, uint16(payload))
 }
 
+// AppendNodeId appends a NodeId payload to data and returns data.
 func AppendNodeId(data []byte, payload NodeId) []byte {
 	return AppendUint16(data, uint16(payload))
 }
 
+// AppendSequenceId appends a SequenceId payload to data and returns data.
 func AppendSequenceId(data []byte, payload SequenceId) []byte {
 	return AppendUint32(data, uint32(payload))
 }
 
+// AppendStringWithLength appends a string payload to data and returns data.
 func AppendStringWithLength(data []byte, payload string) []byte {
 	data = AppendUint16(data, uint16(len(payload)))
 	for i := 0; i < len(payload); i++ {
@@ -106,6 +121,7 @@ func AppendStringWithLength(data []byte, payload string) []byte {
 	return data
 }
 
+// AppendBytesWithLength appends a bytes payload to data and returns data.
 func AppendBytesWithLength(data []byte, payload []byte) []byte {
 	data = AppendUint16(data, uint16(len(payload)))
 	for i := 0; i < len(payload); i++ {
