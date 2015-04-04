@@ -2,12 +2,13 @@ package core
 
 import (
 	"fmt"
-	// "github.com/runningwild/clock"
+	"github.com/runningwild/clock"
 	"github.com/runningwild/network"
+	"log"
 
 	"hash/crc32"
-	// "io"
-	// "time"
+	"io"
+	"time"
 )
 
 var crcTable *crc32.Table
@@ -31,7 +32,7 @@ type Packet struct {
 }
 
 // AppendPacket serializes packet, appends it to buf, and returns buf.
-func AppendPacket(packet *Packet, buf []byte) []byte {
+func AppendPacket(buf []byte, packet *Packet) []byte {
 	buf = AppendNodeId(buf, packet.Source)
 	buf = AppendNodeId(buf, packet.Target)
 	buf = AppendStreamId(buf, packet.Stream)
@@ -42,25 +43,13 @@ func AppendPacket(packet *Packet, buf []byte) []byte {
 	return AppendBytesWithLength(buf, packet.Data)
 }
 
-// SerializeRawPackets truncates buf, serializes each packet in packets, appends them to buf,
-// prefixes buf with a crc, and returns buf.
-func SerializePackets(packets []Packet, buf []byte) []byte {
-	buf = buf[0:0]
-	buf = AppendUint32(buf, 0) // Make room for a CRC later
-	for _, packet := range packets {
-		buf = AppendNodeId(buf, packet.Source)
-		buf = AppendNodeId(buf, packet.Target)
-		buf = AppendStreamId(buf, packet.Stream)
-		buf = AppendBool(buf, packet.Sequenced)
-		if packet.Sequenced {
-			buf = AppendSequenceId(buf, packet.Sequence)
-		}
-		buf = AppendBytesWithLength(buf, packet.Data)
+// serializedLength returns the number of bytes needed to serialize packet.
+func serializedLength(packet *Packet) int {
+	total := 7
+	if packet.Sequenced {
+		total += 4
 	}
-
-	// This is a little wonky, but it actually jams the crc at the front.
-	AppendUint32(buf[0:0], crc32.Checksum(buf[4:], crcTable))
-	return buf
+	return total + 4 + len(packet.Data)
 }
 
 // ConsumePacket consumes a single packet off the front of buf, returning buf or an error.
@@ -96,6 +85,50 @@ func ParsePackets(buf []byte) ([]Packet, error) {
 		packets = append(packets, packet)
 	}
 	return packets, nil
+}
+
+func sendSerializedData(buf []byte, conn io.Writer) {
+	// Prefix buf with a crc of everything we've appended to it.
+	AppendUint32(buf[0:0], crc32.Checksum(buf[4:], crcTable))
+	_, err := conn.Write(buf)
+	if err != nil {
+		log.Printf("Failed to write %d bytes in BatchAndSend: %v", err)
+	}
+}
+
+// BatchAndSend reads from packets and serialiezes them and sends them along conn.  It will batch
+// together multiple packets into a single send, and it chooses a cutoff based on cutoffBytes and
+// cutoffMs.  If either cutoffBytes or cutoffMs is less than or equal to zero, BatchAndSend will
+// send each packet individually.
+func BatchAndSend(packets <-chan Packet, conn io.Writer, c clock.Clock, cutoffBytes int, cutoffMs int) {
+	if cutoffMs < 0 {
+		cutoffMs = 0
+	}
+	var timeout <-chan time.Time
+	buf := AppendUint32(nil, 0) // Make room for a CRC.
+	for {
+		select {
+		case packet, ok := <-packets:
+			if !ok {
+				break
+			}
+			packetLength := serializedLength(&packet)
+			if len(buf)+packetLength >= cutoffBytes {
+				sendSerializedData(buf, conn)
+				buf = buf[0:4] // Leave 4 bytes at the front for the CRC
+			}
+			buf = AppendPacket(buf, &packet)
+			if timeout == nil {
+				timeout = c.After(time.Millisecond * time.Duration(cutoffMs))
+			}
+
+		case <-timeout:
+			sendSerializedData(buf, conn)
+			buf = buf[0:4] // Leave 4 bytes at the front for the CRC
+			timeout = nil
+
+		}
+	}
 }
 
 // // batchDoSend makes sure that there are packets to send, and if so, serializes

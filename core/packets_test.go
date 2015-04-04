@@ -1,13 +1,90 @@
 package core_test
 
 import (
+	"fmt"
+	"github.com/runningwild/clock"
+	"github.com/runningwild/cmwc"
+	"github.com/runningwild/network"
+	"math/rand"
+	"time"
+
 	"github.com/runningwild/sluice/core"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
 )
 
+type fakeBlockingConn struct {
+	in, out  chan []byte
+	packets  [][]byte
+	dropFrac float64
+	rng      *rand.Rand
+}
+
+func makeFakeBlockingConn(dropFrac float64) *fakeBlockingConn {
+	var fbc fakeBlockingConn
+	fbc.in = make(chan []byte)
+	fbc.out = make(chan []byte)
+	fbc.dropFrac = dropFrac
+	c := cmwc.MakeGoodCmwc()
+	c.Seed(123)
+	fbc.rng = rand.New(c)
+	go fbc.run()
+	return &fbc
+}
+func (fbc *fakeBlockingConn) run() {
+	var packets [][]byte
+	var out chan []byte
+	var outPacket []byte
+	for {
+		select {
+		case p := <-fbc.in:
+			if len(packets) == 0 {
+				out = fbc.out
+				outPacket = p
+			}
+			packets = append(packets, p)
+
+		case out <- outPacket:
+			packets = packets[1:]
+			if len(packets) == 0 {
+				out = nil
+			} else {
+				outPacket = packets[0]
+			}
+		}
+	}
+}
+func (fbc *fakeBlockingConn) Write(data []byte) (n int, err error) {
+	if fbc.rng.Float64() < fbc.dropFrac {
+		return len(data), nil
+	}
+	b := make([]byte, len(data))
+	copy(b, data)
+	fbc.in <- b
+	return len(data), nil
+}
+func (fbc *fakeBlockingConn) Read(data []byte) (n int, err error) {
+	buf := <-fbc.out
+	copy(data, buf)
+	n = len(data)
+	if len(buf) < n {
+		n = len(buf)
+	}
+	return n, nil
+}
+func (fbc *fakeBlockingConn) ReadFrom(data []byte) (n int, addr network.Addr, err error) {
+	n, err = fbc.Read(data)
+	return n, fbc, err
+}
+func (fbc *fakeBlockingConn) Network() string {
+	return "fakeBlockingConn"
+}
+func (fbc *fakeBlockingConn) String() string {
+	return fmt.Sprintf("FBC:%p", fbc)
+}
+
 func TestSerializeAndParsePackets(t *testing.T) {
-	Convey("Serialized packets get parsed properly", t, func() {
+	Convey("Serialized packets get batched together after the appropriate timeout", t, func() {
 		packets := []core.Packet{
 			core.Packet{
 				Source:    2,
@@ -41,11 +118,26 @@ func TestSerializeAndParsePackets(t *testing.T) {
 				Data:      []byte("A"),
 			},
 		}
-		var buf []byte
-		buf = core.SerializePackets(packets, buf)
 
-		Convey("If a packet arrives in-tact it should parse correctly.", func() {
-			parsed, err := core.ParsePackets(buf)
+		var serializedData []byte
+		// All of this setup is so that we can send all of our packets and get them serialized
+		// into a single send along conn.
+		packetsChan := make(chan core.Packet)
+		conn := makeFakeBlockingConn(0)
+		c := &clock.FakeClock{}
+		go core.BatchAndSend(packetsChan, conn, c, 10000000, 1000)
+
+		for _, packet := range packets {
+			packetsChan <- packet
+		}
+		c.Inc(time.Millisecond * 10000)
+		serializedData = make([]byte, 100000)
+		n, err := conn.Read(serializedData)
+		So(err, ShouldBeNil)
+		serializedData = serializedData[0:n]
+
+		Convey("Then if that data arrives in-tact it should parse correctly.", func() {
+			parsed, err := core.ParsePackets(serializedData)
 			So(err, ShouldBeNil)
 			So(len(parsed), ShouldEqual, len(packets))
 			for i := range packets {
@@ -60,13 +152,13 @@ func TestSerializeAndParsePackets(t *testing.T) {
 			}
 		})
 
-		Convey("If a packet arrives corrupted it should fail to parse.", func() {
-			for i := range buf {
-				buf[i]++
-				parsed, err := core.ParsePackets(buf)
+		Convey("Then if that data arrives corrupted it should fail to parse.", func() {
+			for i := range serializedData {
+				serializedData[i]++
+				parsed, err := core.ParsePackets(serializedData)
 				So(parsed, ShouldBeNil)
 				So(err, ShouldNotBeNil)
-				buf[i]--
+				serializedData[i]--
 			}
 		})
 	})
