@@ -35,9 +35,20 @@ func (fbc *fakeBlockingConn) run() {
 	var packets [][]byte
 	var out chan []byte
 	var outPacket []byte
+	defer func() {
+		if outPacket != nil {
+			fbc.out <- outPacket
+		}
+		for _, packet := range packets {
+			fbc.out <- packet
+		}
+	}()
 	for {
 		select {
-		case p := <-fbc.in:
+		case p, ok := <-fbc.in:
+			if !ok {
+				return
+			}
 			if len(packets) == 0 {
 				out = fbc.out
 				outPacket = p
@@ -82,48 +93,73 @@ func (fbc *fakeBlockingConn) Network() string {
 func (fbc *fakeBlockingConn) String() string {
 	return fmt.Sprintf("FBC:%p", fbc)
 }
+func (fbc *fakeBlockingConn) Close() error {
+	close(fbc.in)
+	return nil
+}
+
+func arePacketsEqual(a, b *core.Packet) bool {
+	if a.Source != b.Source {
+		return false
+	}
+	if a.Target != b.Target {
+		return false
+	}
+	if a.Stream != b.Stream {
+		return false
+	}
+	if a.Sequenced != b.Sequenced {
+		return false
+	} else {
+		if a.Sequence != b.Sequence {
+			return false
+		}
+	}
+	return string(a.Data) == string(b.Data)
+}
 
 func TestSerializeAndParsePackets(t *testing.T) {
-	Convey("Serialized packets get batched together after the appropriate timeout", t, func() {
-		packets := []core.Packet{
-			core.Packet{
-				Source:    2,
-				Target:    5,
-				Stream:    100,
-				Sequenced: true,
-				Sequence:  3,
-				Data:      []byte("I am a thunder gun"),
-			},
-			core.Packet{
-				Source:    112,
-				Target:    52,
-				Stream:    1030,
-				Sequenced: false,
-				Data:      []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-			},
-			core.Packet{
-				Source:    23,
-				Target:    5,
-				Stream:    100,
-				Sequenced: true,
-				Sequence:  33333,
-				Data:      []byte(""),
-			},
-			core.Packet{
-				Source:    0,
-				Target:    0,
-				Stream:    0,
-				Sequenced: true,
-				Sequence:  0,
-				Data:      []byte("A"),
-			},
-		}
+	packets := []core.Packet{
+		core.Packet{
+			Source:    2,
+			Target:    5,
+			Stream:    100,
+			Sequenced: true,
+			Sequence:  3,
+			Data:      []byte("I am a thunder gun"),
+		},
+		core.Packet{
+			Source:    112,
+			Target:    52,
+			Stream:    1030,
+			Sequenced: false,
+			Data:      []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+		},
+		core.Packet{
+			Source:    23,
+			Target:    5,
+			Stream:    100,
+			Sequenced: true,
+			Sequence:  33333,
+			Data:      []byte(""),
+		},
+		core.Packet{
+			Source:    0,
+			Target:    0,
+			Stream:    0,
+			Sequenced: true,
+			Sequence:  0,
+			Data:      []byte("A"),
+		},
+	}
 
+	Convey("Serialized packets get batched together after the appropriate timeout.", t, func() {
 		var serializedData []byte
 		// All of this setup is so that we can send all of our packets and get them serialized
 		// into a single send along conn.
 		packetsChan := make(chan core.Packet)
 		conn := makeFakeBlockingConn(0)
+		defer conn.Close()
 		c := &clock.FakeClock{}
 		go core.BatchAndSend(packetsChan, conn, c, 10000000, 1000)
 
@@ -161,5 +197,32 @@ func TestSerializeAndParsePackets(t *testing.T) {
 				serializedData[i]--
 			}
 		})
+	})
+
+	Convey("Sending packets through BatchAndSend and piping that to ReceiveAndSplit should result in the original packets.", t, func() {
+		packetsIn := make(chan core.Packet)
+		packetsOut := make(chan core.Packet)
+		conn := makeFakeBlockingConn(0)
+		defer conn.Close()
+		c := &clock.FakeClock{}
+		go core.BatchAndSend(packetsIn, conn, c, -1, -1)
+		go core.ReceiveAndSplit(conn, packetsOut, 100000)
+		go func() {
+			for _, packet := range packets {
+				packetsIn <- packet
+			}
+			close(packetsIn)
+		}()
+		found := make(map[int]bool)
+		for len(found) < len(packets) {
+			packet := <-packetsOut
+			for i := range packets {
+				if arePacketsEqual(&packet, &packets[i]) {
+					So(found[i], ShouldBeFalse)
+					found[i] = true
+				}
+			}
+		}
+		So(len(found), ShouldEqual, len(packets))
 	})
 }
