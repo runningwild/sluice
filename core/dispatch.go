@@ -90,6 +90,7 @@ func ParseChunks(buf []byte) ([]Chunk, error) {
 func sendSerializedData(buf []byte, conn io.Writer) {
 	// Prefix buf with a crc of everything we've appended to it.
 	AppendUint32(buf[0:0], crc32.Checksum(buf[4:], crcTable))
+	fmt.Printf("Writing %v\n", buf)
 	_, err := conn.Write(buf)
 	if err != nil {
 		log.Printf("Failed to write %d bytes in BatchAndSend: %v", err)
@@ -106,24 +107,31 @@ func BatchAndSend(packets <-chan Chunk, conn io.Writer, c clock.Clock, cutoffByt
 	}
 	var timeout <-chan time.Time
 	buf := AppendUint32(nil, 0) // Make room for a CRC.
+	numChunks := 0
 	for {
 		select {
 		case packet, ok := <-packets:
 			if !ok {
+				// Send any queued up packets before quitting.
+				sendSerializedData(buf, conn)
 				return
 			}
 			packetLength := serializedLength(&packet)
-			if len(buf)+packetLength >= cutoffBytes {
+			if len(buf)+packetLength >= cutoffBytes && numChunks > 0 {
 				sendSerializedData(buf, conn)
+				numChunks = 0
 				buf = buf[0:4] // Leave 4 bytes at the front for the CRC
+				timeout = nil
 			}
 			buf = AppendChunk(buf, &packet)
+			numChunks++
 			if timeout == nil {
 				timeout = c.After(time.Millisecond * time.Duration(cutoffMs))
 			}
 
 		case <-timeout:
 			sendSerializedData(buf, conn)
+			numChunks = 0
 			buf = buf[0:4] // Leave 4 bytes at the front for the CRC
 			timeout = nil
 

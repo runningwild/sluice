@@ -14,10 +14,10 @@ import (
 )
 
 type fakeBlockingConn struct {
-	in, out  chan []byte
-	chunks   [][]byte
-	dropFrac float64
-	rng      *rand.Rand
+	in, out    chan []byte
+	dispatches [][]byte
+	dropFrac   float64
+	rng        *rand.Rand
 }
 
 func makeFakeBlockingConn(dropFrac float64) *fakeBlockingConn {
@@ -32,15 +32,15 @@ func makeFakeBlockingConn(dropFrac float64) *fakeBlockingConn {
 	return &fbc
 }
 func (fbc *fakeBlockingConn) run() {
-	var chunks [][]byte
+	var dispatches [][]byte
 	var out chan []byte
-	var outChunk []byte
+	var outDispatch []byte
 	defer func() {
-		if outChunk != nil {
-			fbc.out <- outChunk
+		if outDispatch != nil {
+			fbc.out <- outDispatch
 		}
-		for _, chunk := range chunks {
-			fbc.out <- chunk
+		for _, dispatch := range dispatches {
+			fbc.out <- dispatch
 		}
 	}()
 	for {
@@ -49,18 +49,18 @@ func (fbc *fakeBlockingConn) run() {
 			if !ok {
 				return
 			}
-			if len(chunks) == 0 {
+			if len(dispatches) == 0 {
 				out = fbc.out
-				outChunk = p
+				outDispatch = p
 			}
-			chunks = append(chunks, p)
+			dispatches = append(dispatches, p)
 
-		case out <- outChunk:
-			chunks = chunks[1:]
-			if len(chunks) == 0 {
+		case out <- outDispatch:
+			dispatches = dispatches[1:]
+			if len(dispatches) == 0 {
 				out = nil
 			} else {
-				outChunk = chunks[0]
+				outDispatch = dispatches[0]
 			}
 		}
 	}
