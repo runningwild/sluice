@@ -15,7 +15,7 @@ import (
 
 type fakeBlockingConn struct {
 	in, out  chan []byte
-	packets  [][]byte
+	chunks   [][]byte
 	dropFrac float64
 	rng      *rand.Rand
 }
@@ -32,15 +32,15 @@ func makeFakeBlockingConn(dropFrac float64) *fakeBlockingConn {
 	return &fbc
 }
 func (fbc *fakeBlockingConn) run() {
-	var packets [][]byte
+	var chunks [][]byte
 	var out chan []byte
-	var outPacket []byte
+	var outChunk []byte
 	defer func() {
-		if outPacket != nil {
-			fbc.out <- outPacket
+		if outChunk != nil {
+			fbc.out <- outChunk
 		}
-		for _, packet := range packets {
-			fbc.out <- packet
+		for _, chunk := range chunks {
+			fbc.out <- chunk
 		}
 	}()
 	for {
@@ -49,18 +49,18 @@ func (fbc *fakeBlockingConn) run() {
 			if !ok {
 				return
 			}
-			if len(packets) == 0 {
+			if len(chunks) == 0 {
 				out = fbc.out
-				outPacket = p
+				outChunk = p
 			}
-			packets = append(packets, p)
+			chunks = append(chunks, p)
 
-		case out <- outPacket:
-			packets = packets[1:]
-			if len(packets) == 0 {
+		case out <- outChunk:
+			chunks = chunks[1:]
+			if len(chunks) == 0 {
 				out = nil
 			} else {
-				outPacket = packets[0]
+				outChunk = chunks[0]
 			}
 		}
 	}
@@ -98,7 +98,7 @@ func (fbc *fakeBlockingConn) Close() error {
 	return nil
 }
 
-func arePacketsEqual(a, b *core.Packet) bool {
+func areChunksEqual(a, b *core.Chunk) bool {
 	if a.Source != b.Source {
 		return false
 	}
@@ -118,9 +118,9 @@ func arePacketsEqual(a, b *core.Packet) bool {
 	return string(a.Data) == string(b.Data)
 }
 
-func TestSerializeAndParsePackets(t *testing.T) {
-	packets := []core.Packet{
-		core.Packet{
+func TestSerializeAndParseChunks(t *testing.T) {
+	chunks := []core.Chunk{
+		core.Chunk{
 			Source:    2,
 			Target:    5,
 			Stream:    100,
@@ -128,14 +128,14 @@ func TestSerializeAndParsePackets(t *testing.T) {
 			Sequence:  3,
 			Data:      []byte("I am a thunder gun"),
 		},
-		core.Packet{
+		core.Chunk{
 			Source:    112,
 			Target:    52,
 			Stream:    1030,
 			Sequenced: false,
 			Data:      []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 		},
-		core.Packet{
+		core.Chunk{
 			Source:    23,
 			Target:    5,
 			Stream:    100,
@@ -143,7 +143,7 @@ func TestSerializeAndParsePackets(t *testing.T) {
 			Sequence:  33333,
 			Data:      []byte(""),
 		},
-		core.Packet{
+		core.Chunk{
 			Source:    0,
 			Target:    0,
 			Stream:    0,
@@ -153,18 +153,18 @@ func TestSerializeAndParsePackets(t *testing.T) {
 		},
 	}
 
-	Convey("Serialized packets get batched together after the appropriate timeout.", t, func() {
+	Convey("Serialized chunks get batched together after the appropriate timeout.", t, func() {
 		var serializedData []byte
-		// All of this setup is so that we can send all of our packets and get them serialized
+		// All of this setup is so that we can send all of our chunks and get them serialized
 		// into a single send along conn.
-		packetsChan := make(chan core.Packet)
+		chunksChan := make(chan core.Chunk)
 		conn := makeFakeBlockingConn(0)
 		defer conn.Close()
 		c := &clock.FakeClock{}
-		go core.BatchAndSend(packetsChan, conn, c, 10000000, 1000)
+		go core.BatchAndSend(chunksChan, conn, c, 10000000, 1000)
 
-		for _, packet := range packets {
-			packetsChan <- packet
+		for _, chunk := range chunks {
+			chunksChan <- chunk
 		}
 		c.Inc(time.Millisecond * 10000)
 		serializedData = make([]byte, 100000)
@@ -173,25 +173,25 @@ func TestSerializeAndParsePackets(t *testing.T) {
 		serializedData = serializedData[0:n]
 
 		Convey("Then if that data arrives in-tact it should parse correctly.", func() {
-			parsed, err := core.ParsePackets(serializedData)
+			parsed, err := core.ParseChunks(serializedData)
 			So(err, ShouldBeNil)
-			So(len(parsed), ShouldEqual, len(packets))
-			for i := range packets {
-				So(parsed[i].Source, ShouldEqual, packets[i].Source)
-				So(parsed[i].Target, ShouldEqual, packets[i].Target)
-				So(parsed[i].Stream, ShouldEqual, packets[i].Stream)
-				So(parsed[i].Sequenced, ShouldEqual, packets[i].Sequenced)
+			So(len(parsed), ShouldEqual, len(chunks))
+			for i := range chunks {
+				So(parsed[i].Source, ShouldEqual, chunks[i].Source)
+				So(parsed[i].Target, ShouldEqual, chunks[i].Target)
+				So(parsed[i].Stream, ShouldEqual, chunks[i].Stream)
+				So(parsed[i].Sequenced, ShouldEqual, chunks[i].Sequenced)
 				if parsed[i].Sequenced {
-					So(parsed[i].Sequence, ShouldEqual, packets[i].Sequence)
+					So(parsed[i].Sequence, ShouldEqual, chunks[i].Sequence)
 				}
-				So(string(parsed[i].Data), ShouldEqual, string(packets[i].Data))
+				So(string(parsed[i].Data), ShouldEqual, string(chunks[i].Data))
 			}
 		})
 
 		Convey("Then if that data arrives corrupted it should fail to parse.", func() {
 			for i := range serializedData {
 				serializedData[i]++
-				parsed, err := core.ParsePackets(serializedData)
+				parsed, err := core.ParseChunks(serializedData)
 				So(parsed, ShouldBeNil)
 				So(err, ShouldNotBeNil)
 				serializedData[i]--
@@ -199,30 +199,30 @@ func TestSerializeAndParsePackets(t *testing.T) {
 		})
 	})
 
-	Convey("Sending packets through BatchAndSend and piping that to ReceiveAndSplit should result in the original packets.", t, func() {
-		packetsIn := make(chan core.Packet)
-		packetsOut := make(chan core.Packet)
+	Convey("Sending chunks through BatchAndSend and piping that to ReceiveAndSplit should result in the original chunks.", t, func() {
+		chunksIn := make(chan core.Chunk)
+		chunksOut := make(chan core.Chunk)
 		conn := makeFakeBlockingConn(0)
 		defer conn.Close()
 		c := &clock.FakeClock{}
-		go core.BatchAndSend(packetsIn, conn, c, -1, -1)
-		go core.ReceiveAndSplit(conn, packetsOut, 100000)
+		go core.BatchAndSend(chunksIn, conn, c, -1, -1)
+		go core.ReceiveAndSplit(conn, chunksOut, 100000)
 		go func() {
-			for _, packet := range packets {
-				packetsIn <- packet
+			for _, chunk := range chunks {
+				chunksIn <- chunk
 			}
-			close(packetsIn)
+			close(chunksIn)
 		}()
 		found := make(map[int]bool)
-		for len(found) < len(packets) {
-			packet := <-packetsOut
-			for i := range packets {
-				if arePacketsEqual(&packet, &packets[i]) {
+		for len(found) < len(chunks) {
+			chunk := <-chunksOut
+			for i := range chunks {
+				if areChunksEqual(&chunk, &chunks[i]) {
 					So(found[i], ShouldBeFalse)
 					found[i] = true
 				}
 			}
 		}
-		So(len(found), ShouldEqual, len(packets))
+		So(len(found), ShouldEqual, len(chunks))
 	})
 }

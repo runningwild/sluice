@@ -17,7 +17,7 @@ func init() {
 	crcTable = crc32.MakeTable(crc32.Castagnoli)
 }
 
-type Packet struct {
+type Chunk struct {
 	// SourceAddr is set, on received packets, to the addr of the host that sent it to us.
 	SourceAddr network.Addr
 
@@ -31,8 +31,8 @@ type Packet struct {
 	Data []byte
 }
 
-// AppendPacket serializes packet, appends it to buf, and returns buf.
-func AppendPacket(buf []byte, packet *Packet) []byte {
+// AppendChunk serializes packet, appends it to buf, and returns buf.
+func AppendChunk(buf []byte, packet *Chunk) []byte {
 	buf = AppendNodeId(buf, packet.Source)
 	buf = AppendNodeId(buf, packet.Target)
 	buf = AppendStreamId(buf, packet.Stream)
@@ -44,7 +44,7 @@ func AppendPacket(buf []byte, packet *Packet) []byte {
 }
 
 // serializedLength returns the number of bytes needed to serialize packet.
-func serializedLength(packet *Packet) int {
+func serializedLength(packet *Chunk) int {
 	total := 7
 	if packet.Sequenced {
 		total += 4
@@ -52,8 +52,8 @@ func serializedLength(packet *Packet) int {
 	return total + 4 + len(packet.Data)
 }
 
-// ConsumePacket consumes a single packet off the front of buf, returning buf or an error.
-func ConsumePacket(buf []byte, payload *Packet) ([]byte, error) {
+// ConsumeChunk consumes a single packet off the front of buf, returning buf or an error.
+func ConsumeChunk(buf []byte, payload *Chunk) ([]byte, error) {
 	buf = ConsumeNodeId(buf, &payload.Source)
 	buf = ConsumeNodeId(buf, &payload.Target)
 	buf = ConsumeStreamId(buf, &payload.Stream)
@@ -66,19 +66,19 @@ func ConsumePacket(buf []byte, payload *Packet) ([]byte, error) {
 	return ConsumeBytesWithLength(buf, &payload.Data)
 }
 
-// ParseRawPackets parses buf, which was data serialized by SerializeRawPackets,
+// ParseRawChunks parses buf, which was data serialized by SerializeRawChunks,
 // and puts those packets into raws.  Returns true iff the crc test passes.
-func ParsePackets(buf []byte) ([]Packet, error) {
+func ParseChunks(buf []byte) ([]Chunk, error) {
 	var crc uint32
 	buf = ConsumeUint32(buf, &crc)
 	if crc != crc32.Checksum(buf, crcTable) {
 		return nil, fmt.Errorf("CRC mismatch")
 	}
-	var packets []Packet
+	var packets []Chunk
 	for len(buf) > 0 {
-		var packet Packet
+		var packet Chunk
 		var err error
-		buf, err = ConsumePacket(buf, &packet)
+		buf, err = ConsumeChunk(buf, &packet)
 		if err != nil {
 			return nil, err
 		}
@@ -100,7 +100,7 @@ func sendSerializedData(buf []byte, conn io.Writer) {
 // together multiple packets into a single send, and it chooses a cutoff based on cutoffBytes and
 // cutoffMs.  If either cutoffBytes or cutoffMs is less than or equal to zero, BatchAndSend will
 // send each packet individually.
-func BatchAndSend(packets <-chan Packet, conn io.Writer, c clock.Clock, cutoffBytes int, cutoffMs int) {
+func BatchAndSend(packets <-chan Chunk, conn io.Writer, c clock.Clock, cutoffBytes int, cutoffMs int) {
 	if cutoffMs < 0 {
 		cutoffMs = 0
 	}
@@ -117,7 +117,7 @@ func BatchAndSend(packets <-chan Packet, conn io.Writer, c clock.Clock, cutoffBy
 				sendSerializedData(buf, conn)
 				buf = buf[0:4] // Leave 4 bytes at the front for the CRC
 			}
-			buf = AppendPacket(buf, &packet)
+			buf = AppendChunk(buf, &packet)
 			if timeout == nil {
 				timeout = c.After(time.Millisecond * time.Duration(cutoffMs))
 			}
@@ -135,22 +135,22 @@ type ReadFromer interface {
 	ReadFrom(buf []byte) (n int, addr network.Addr, err error)
 }
 
-func ReceiveAndSplit(conn ReadFromer, packets chan<- Packet, maxPacketSize int) {
+func ReceiveAndSplit(conn ReadFromer, packets chan<- Chunk, maxChunkSize int) {
 	defer close(packets)
-	buf := make([]byte, maxPacketSize)
+	buf := make([]byte, maxChunkSize)
 	for {
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {
 			log.Printf("ReceiveAndSplit connection was closed.")
 			return
 		}
-		parsedPackets, err := ParsePackets(buf[0:n])
+		parsedChunks, err := ParseChunks(buf[0:n])
 		if err != nil {
 			log.Printf("Error parsing packets: %v", err)
 			continue
 		}
 		go func() {
-			for _, packet := range parsedPackets {
+			for _, packet := range parsedChunks {
 				packet.SourceAddr = addr
 				packets <- packet
 			}
