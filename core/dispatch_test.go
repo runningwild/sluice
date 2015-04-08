@@ -108,12 +108,8 @@ func areChunksEqual(a, b *core.Chunk) bool {
 	if a.Stream != b.Stream {
 		return false
 	}
-	if a.Sequenced != b.Sequenced {
+	if a.Sequence != b.Sequence {
 		return false
-	} else {
-		if a.Sequence != b.Sequence {
-			return false
-		}
 	}
 	return string(a.Data) == string(b.Data)
 }
@@ -121,37 +117,40 @@ func areChunksEqual(a, b *core.Chunk) bool {
 func TestSerializeAndParseChunks(t *testing.T) {
 	chunks := []core.Chunk{
 		core.Chunk{
-			Source:    2,
-			Target:    5,
-			Stream:    100,
-			Sequenced: true,
-			Sequence:  3,
-			Data:      []byte("I am a thunder gun"),
+			Source:   2,
+			Target:   5,
+			Stream:   100,
+			Sequence: 3,
+			Data:     []byte("I am a thunder gun"),
 		},
 		core.Chunk{
-			Source:    112,
-			Target:    52,
-			Stream:    1030,
-			Sequenced: false,
-			Data:      []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Source:   112,
+			Target:   52,
+			Stream:   1030,
+			Sequence: 1122,
+			Data:     []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 		},
 		core.Chunk{
-			Source:    23,
-			Target:    5,
-			Stream:    100,
-			Sequenced: true,
-			Sequence:  33333,
-			Data:      []byte(""),
+			Source:   23,
+			Target:   5,
+			Stream:   100,
+			Sequence: 33333,
+			Data:     []byte(""),
 		},
 		core.Chunk{
-			Source:    0,
-			Target:    0,
-			Stream:    0,
-			Sequenced: true,
-			Sequence:  0,
-			Data:      []byte("A"),
+			Source:   0,
+			Target:   0,
+			Stream:   0,
+			Sequence: 0,
+			Data:     []byte("A"),
 		},
 	}
+
+	Convey("Chunks know their serialized length without having to serialize.", t, func() {
+		for _, chunk := range chunks {
+			So(chunk.SerializedLength(), ShouldEqual, len(core.AppendChunk(nil, &chunk)))
+		}
+	})
 
 	Convey("Serialized chunks get batched together after the appropriate timeout.", t, func() {
 		var serializedData []byte
@@ -180,10 +179,7 @@ func TestSerializeAndParseChunks(t *testing.T) {
 				So(parsed[i].Source, ShouldEqual, chunks[i].Source)
 				So(parsed[i].Target, ShouldEqual, chunks[i].Target)
 				So(parsed[i].Stream, ShouldEqual, chunks[i].Stream)
-				So(parsed[i].Sequenced, ShouldEqual, chunks[i].Sequenced)
-				if parsed[i].Sequenced {
-					So(parsed[i].Sequence, ShouldEqual, chunks[i].Sequence)
-				}
+				So(parsed[i].Sequence, ShouldEqual, chunks[i].Sequence)
 				So(string(parsed[i].Data), ShouldEqual, string(chunks[i].Data))
 			}
 		})

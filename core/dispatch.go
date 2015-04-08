@@ -21,21 +21,16 @@ type Chunk struct {
 	// SourceAddr is set, for incoming dispatched, to the addr of the host that sent it to us.
 	SourceAddr network.Addr
 
-	Source    NodeId
-	Target    NodeId
-	Stream    StreamId
-	Sequenced bool
-	Sequence  SequenceId // Only set if Sequenced is true
-	Data      []byte
+	Source   NodeId
+	Target   NodeId
+	Stream   StreamId
+	Sequence SequenceId
+	Data     []byte
 }
 
 // SerializedLength returns the number of bytes needed to serialize chunk.
 func (c *Chunk) SerializedLength() int {
-	total := 7
-	if c.Sequenced {
-		total += 4
-	}
-	return total + 4 + len(c.Data)
+	return 12 + len(c.Data)
 }
 
 // AppendChunk serializes payload, appends it to buf, and returns buf.
@@ -43,10 +38,7 @@ func AppendChunk(buf []byte, payload *Chunk) []byte {
 	buf = AppendNodeId(buf, payload.Source)
 	buf = AppendNodeId(buf, payload.Target)
 	buf = AppendStreamId(buf, payload.Stream)
-	buf = AppendBool(buf, payload.Sequenced)
-	if payload.Sequenced {
-		buf = AppendSequenceId(buf, payload.Sequence)
-	}
+	buf = AppendSequenceId(buf, payload.Sequence)
 	return AppendBytesWithLength(buf, payload.Data)
 }
 
@@ -55,12 +47,7 @@ func ConsumeChunk(buf []byte, payload *Chunk) ([]byte, error) {
 	buf = ConsumeNodeId(buf, &payload.Source)
 	buf = ConsumeNodeId(buf, &payload.Target)
 	buf = ConsumeStreamId(buf, &payload.Stream)
-	buf = ConsumeBool(buf, &payload.Sequenced)
-	if payload.Sequenced {
-		buf = ConsumeSequenceId(buf, &payload.Sequence)
-	} else {
-		payload.Sequence = 0
-	}
+	buf = ConsumeSequenceId(buf, &payload.Sequence)
 	return ConsumeBytesWithLength(buf, &payload.Data)
 }
 

@@ -19,9 +19,6 @@ const (
 	ModeMax
 )
 
-func (m Mode) Sequenced() bool {
-	return m.Reliable() || m.Ordered() || m.Deduped()
-}
 func (m Mode) Reliable() bool {
 	return m == ModeReliableOrdered || m == ModeReliableUnordered
 }
