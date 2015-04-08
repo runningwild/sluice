@@ -18,7 +18,7 @@ func init() {
 }
 
 type Chunk struct {
-	// SourceAddr is set, on received packets, to the addr of the host that sent it to us.
+	// SourceAddr is set, for incoming dispatched, to the addr of the host that sent it to us.
 	SourceAddr network.Addr
 
 	Source    NodeId
@@ -26,33 +26,31 @@ type Chunk struct {
 	Stream    StreamId
 	Sequenced bool
 	Sequence  SequenceId // Only set if Sequenced is true
-
-	// Data is the raw data, all user-level data is sent through this field.
-	Data []byte
+	Data      []byte
 }
 
-// AppendChunk serializes packet, appends it to buf, and returns buf.
-func AppendChunk(buf []byte, packet *Chunk) []byte {
-	buf = AppendNodeId(buf, packet.Source)
-	buf = AppendNodeId(buf, packet.Target)
-	buf = AppendStreamId(buf, packet.Stream)
-	buf = AppendBool(buf, packet.Sequenced)
-	if packet.Sequenced {
-		buf = AppendSequenceId(buf, packet.Sequence)
-	}
-	return AppendBytesWithLength(buf, packet.Data)
-}
-
-// serializedLength returns the number of bytes needed to serialize packet.
-func serializedLength(packet *Chunk) int {
+// SerializedLength returns the number of bytes needed to serialize chunk.
+func (c *Chunk) SerializedLength() int {
 	total := 7
-	if packet.Sequenced {
+	if c.Sequenced {
 		total += 4
 	}
-	return total + 4 + len(packet.Data)
+	return total + 4 + len(c.Data)
 }
 
-// ConsumeChunk consumes a single packet off the front of buf, returning buf or an error.
+// AppendChunk serializes payload, appends it to buf, and returns buf.
+func AppendChunk(buf []byte, payload *Chunk) []byte {
+	buf = AppendNodeId(buf, payload.Source)
+	buf = AppendNodeId(buf, payload.Target)
+	buf = AppendStreamId(buf, payload.Stream)
+	buf = AppendBool(buf, payload.Sequenced)
+	if payload.Sequenced {
+		buf = AppendSequenceId(buf, payload.Sequence)
+	}
+	return AppendBytesWithLength(buf, payload.Data)
+}
+
+// ConsumeChunk consumes a single chunk off the front of buf, returning buf or an error.
 func ConsumeChunk(buf []byte, payload *Chunk) ([]byte, error) {
 	buf = ConsumeNodeId(buf, &payload.Source)
 	buf = ConsumeNodeId(buf, &payload.Target)
@@ -66,42 +64,43 @@ func ConsumeChunk(buf []byte, payload *Chunk) ([]byte, error) {
 	return ConsumeBytesWithLength(buf, &payload.Data)
 }
 
-// ParseRawChunks parses buf, which was data serialized by SerializeRawChunks,
-// and puts those packets into raws.  Returns true iff the crc test passes.
+// ParseChunks parses buf, which should be data serialized by BatchAndSend, and returns the
+// resulting chunks.
 func ParseChunks(buf []byte) ([]Chunk, error) {
 	var crc uint32
 	buf = ConsumeUint32(buf, &crc)
 	if crc != crc32.Checksum(buf, crcTable) {
 		return nil, fmt.Errorf("CRC mismatch")
 	}
-	var packets []Chunk
+	var chunks []Chunk
 	for len(buf) > 0 {
-		var packet Chunk
+		var chunk Chunk
 		var err error
-		buf, err = ConsumeChunk(buf, &packet)
+		buf, err = ConsumeChunk(buf, &chunk)
 		if err != nil {
 			return nil, err
 		}
-		packets = append(packets, packet)
+		chunks = append(chunks, chunk)
 	}
-	return packets, nil
+	return chunks, nil
 }
 
+// sendSerializedData sets the leading CRC on buf and writes the data to conn.  Any errors on the
+// write will be logged but otherwise ignored.
 func sendSerializedData(buf []byte, conn io.Writer) {
 	// Prefix buf with a crc of everything we've appended to it.
 	AppendUint32(buf[0:0], crc32.Checksum(buf[4:], crcTable))
-	fmt.Printf("Writing %v\n", buf)
 	_, err := conn.Write(buf)
 	if err != nil {
 		log.Printf("Failed to write %d bytes in BatchAndSend: %v", err)
 	}
 }
 
-// BatchAndSend reads from packets and serialiezes them and sends them along conn.  It will batch
-// together multiple packets into a single send, and it chooses a cutoff based on cutoffBytes and
+// BatchAndSend reads from chunks and serialiezes them and sends them along conn.  It will batch
+// together multiple chunks into a single send, and it chooses a cutoff based on cutoffBytes and
 // cutoffMs.  If either cutoffBytes or cutoffMs is less than or equal to zero, BatchAndSend will
-// send each packet individually.
-func BatchAndSend(packets <-chan Chunk, conn io.Writer, c clock.Clock, cutoffBytes int, cutoffMs int) {
+// send each chunk individually.
+func BatchAndSend(chunks <-chan Chunk, conn io.Writer, c clock.Clock, cutoffBytes int, cutoffMs int) {
 	if cutoffMs < 0 {
 		cutoffMs = 0
 	}
@@ -110,20 +109,20 @@ func BatchAndSend(packets <-chan Chunk, conn io.Writer, c clock.Clock, cutoffByt
 	numChunks := 0
 	for {
 		select {
-		case packet, ok := <-packets:
+		case chunk, ok := <-chunks:
 			if !ok {
-				// Send any queued up packets before quitting.
+				// Send any queued up chunks before quitting.
 				sendSerializedData(buf, conn)
 				return
 			}
-			packetLength := serializedLength(&packet)
-			if len(buf)+packetLength >= cutoffBytes && numChunks > 0 {
+			chunkLength := chunk.SerializedLength()
+			if len(buf)+chunkLength >= cutoffBytes && numChunks > 0 {
 				sendSerializedData(buf, conn)
 				numChunks = 0
 				buf = buf[0:4] // Leave 4 bytes at the front for the CRC
 				timeout = nil
 			}
-			buf = AppendChunk(buf, &packet)
+			buf = AppendChunk(buf, &chunk)
 			numChunks++
 			if timeout == nil {
 				timeout = c.After(time.Millisecond * time.Duration(cutoffMs))
@@ -143,8 +142,8 @@ type ReadFromer interface {
 	ReadFrom(buf []byte) (n int, addr network.Addr, err error)
 }
 
-func ReceiveAndSplit(conn ReadFromer, packets chan<- Chunk, maxChunkSize int) {
-	defer close(packets)
+func ReceiveAndSplit(conn ReadFromer, chunks chan<- Chunk, maxChunkSize int) {
+	defer close(chunks)
 	buf := make([]byte, maxChunkSize)
 	for {
 		n, addr, err := conn.ReadFrom(buf)
@@ -154,13 +153,13 @@ func ReceiveAndSplit(conn ReadFromer, packets chan<- Chunk, maxChunkSize int) {
 		}
 		parsedChunks, err := ParseChunks(buf[0:n])
 		if err != nil {
-			log.Printf("Error parsing packets: %v", err)
+			log.Printf("Error parsing chunks: %v", err)
 			continue
 		}
 		go func() {
-			for _, packet := range parsedChunks {
-				packet.SourceAddr = addr
-				packets <- packet
+			for _, chunk := range parsedChunks {
+				chunk.SourceAddr = addr
+				chunks <- chunk
 			}
 		}()
 	}
