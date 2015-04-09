@@ -14,27 +14,32 @@ func TestChunkTrackers(t *testing.T) {
 			Data:        []byte("ABC"),
 		},
 		core.Chunk{
-			Sequence:    3,
+			Sequence:    4,
 			Subsequence: 2,
 			Data:        []byte("D"),
 		},
 		core.Chunk{
-			Sequence:    5,
+			Sequence:    7,
 			Subsequence: 1,
 			Data:        []byte("abc"),
 		},
 		core.Chunk{
-			Sequence:    5,
+			Sequence:    8,
 			Subsequence: 2,
 			Data:        []byte("def"),
 		},
 		core.Chunk{
-			Sequence:    5,
+			Sequence:    9,
 			Subsequence: 3,
-			Data:        []byte("gh"),
+			Data:        []byte("ghk"),
 		},
 		core.Chunk{
 			Sequence:    10,
+			Subsequence: 4,
+			Data:        []byte(""),
+		},
+		core.Chunk{
+			Sequence:    12,
 			Subsequence: 0,
 			Data:        []byte("123"),
 		},
@@ -54,10 +59,12 @@ func TestChunkTrackers(t *testing.T) {
 				packets = ct.AddChunk(chunks[3])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[4])
-				So(len(packets), ShouldEqual, 1)
-				So(string(packets[0]), ShouldEqual, "abcdefgh")
-
+				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+
+				packets = ct.AddChunk(chunks[6])
 				So(len(packets), ShouldEqual, 1)
 				So(string(packets[0]), ShouldEqual, "123")
 			})
@@ -70,15 +77,17 @@ func TestChunkTrackers(t *testing.T) {
 				So(len(packets), ShouldEqual, 1)
 				So(string(packets[0]), ShouldEqual, "ABCD")
 
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[4])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[3])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[2])
 				So(len(packets), ShouldEqual, 1)
-				So(string(packets[0]), ShouldEqual, "abcdefgh")
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
 
-				packets = ct.AddChunk(chunks[5])
+				packets = ct.AddChunk(chunks[6])
 				So(len(packets), ShouldEqual, 1)
 				So(string(packets[0]), ShouldEqual, "123")
 			})
@@ -110,19 +119,23 @@ func TestChunkTrackers(t *testing.T) {
 				packets = ct.AddChunk(chunks[3])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[4])
-				So(len(packets), ShouldEqual, 1)
-				So(string(packets[0]), ShouldEqual, "abcdefgh")
-				packets = ct.AddChunk(chunks[4])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[5])
 				So(len(packets), ShouldEqual, 0)
 
-				packets = ct.AddChunk(chunks[5])
+				packets = ct.AddChunk(chunks[6])
 				So(len(packets), ShouldEqual, 1)
 				So(string(packets[0]), ShouldEqual, "123")
-				packets = ct.AddChunk(chunks[5])
+				packets = ct.AddChunk(chunks[6])
 				So(len(packets), ShouldEqual, 0)
-				packets = ct.AddChunk(chunks[5])
+				packets = ct.AddChunk(chunks[6])
 				So(len(packets), ShouldEqual, 0)
 			})
 
@@ -133,7 +146,7 @@ func TestChunkTrackers(t *testing.T) {
 
 				// This makes all of the other chunks look old, we shouldn't get back anything for them
 				// now.
-				packets = ct.AddChunk(chunks[5])
+				packets = ct.AddChunk(chunks[6])
 				So(len(packets), ShouldEqual, 1)
 
 				packets = ct.AddChunk(chunks[1])
@@ -144,6 +157,8 @@ func TestChunkTrackers(t *testing.T) {
 				packets = ct.AddChunk(chunks[3])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[5])
 				So(len(packets), ShouldEqual, 0)
 
 			})

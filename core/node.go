@@ -1,5 +1,9 @@
 package core
 
+import (
+	"fmt"
+)
+
 type Node struct{}
 
 // WriterRoutine reads channel packets, converts each packet into one or more chunks each, then
@@ -51,11 +55,14 @@ func WriterRoutine(config StreamConfig, target NodeId, maxChunkDataSize int, pac
 	}
 }
 
+// chunkSequencer tracks all chunks that came from the same packet.
 type chunkSequencer struct {
 	chunks    map[SubsequenceIndex]*Chunk
 	lastChunk *Chunk
 	numChunks int
-	sequence  SequenceId
+
+	// sequence is the SequenceId of the first chunk in the packet.
+	sequence SequenceId
 }
 
 func makeChunkSequencer(sequence SequenceId) *chunkSequencer {
@@ -66,8 +73,9 @@ func makeChunkSequencer(sequence SequenceId) *chunkSequencer {
 }
 
 func (cs *chunkSequencer) AddChunk(chunk *Chunk) {
-	if chunk.Sequence != cs.sequence {
-		panic("Chunk was added to the wrong chunkSequencer.")
+	sequence := chunk.Sequence - SequenceId(chunk.Subsequence-1)
+	if sequence != cs.sequence {
+		panic(fmt.Sprintf("Chunk was from sequence %d, expected %d.", sequence, cs.sequence))
 	}
 	cs.chunks[chunk.Subsequence] = chunk
 	if cs.numChunks == 0 {
@@ -131,22 +139,23 @@ func MakeUnreliableUnorderedChunkTracker(maxAge SequenceId) ChunkTracker {
 	}
 }
 func (ct *UnreliableUnorderedChunkTracker) AddChunk(chunk Chunk) [][]byte {
-	if chunk.Sequence < ct.horizon {
+	sequence := chunk.Sequence - SequenceId(chunk.Subsequence-1)
+	if sequence < ct.horizon {
 		return nil
 	}
-	cs, ok := ct.chunks[chunk.Sequence]
+	cs, ok := ct.chunks[sequence]
 	if ok && cs == nil {
 		// This means that we've already returned this packet, we should not return it again.
 		return nil
 	}
 	if !ok {
-		cs = makeChunkSequencer(chunk.Sequence)
-		ct.chunks[chunk.Sequence] = cs
+		cs = makeChunkSequencer(sequence)
+		ct.chunks[sequence] = cs
 
 		// Go through all existing sequences and remove any that are too old.
 		// TODO: This is obviously inefficient, but is it terrible?  Maybe in practice this is fine.
-		if chunk.Sequence > ct.maxAge && chunk.Sequence-ct.maxAge > ct.horizon {
-			ct.horizon = chunk.Sequence - ct.maxAge
+		if sequence > ct.maxAge && sequence-ct.maxAge > ct.horizon {
+			ct.horizon = sequence - ct.maxAge
 		}
 		var kill []SequenceId
 		for sequence := range ct.chunks {
@@ -162,7 +171,7 @@ func (ct *UnreliableUnorderedChunkTracker) AddChunk(chunk Chunk) [][]byte {
 	var ret [][]byte
 	if cs.Done() {
 		ret = append(ret, cs.GetPacket())
-		ct.chunks[chunk.Sequence] = nil
+		ct.chunks[sequence] = nil
 	}
 	return ret
 }
