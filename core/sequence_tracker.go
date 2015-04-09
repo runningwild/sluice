@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// SequenceTracker is a simple way of keeping track of what chunks have been received on a
+// SequenceTracker is a simple way of keeping track of what SequenceIds have been received on a
 // particular stream.
 type SequenceTracker struct {
 	// The stream that this SequenceTracker is tracking.

@@ -117,18 +117,20 @@ func areChunksEqual(a, b *core.Chunk) bool {
 func TestSerializeAndParseChunks(t *testing.T) {
 	chunks := []core.Chunk{
 		core.Chunk{
-			Source:   2,
-			Target:   5,
-			Stream:   100,
-			Sequence: 3,
-			Data:     []byte("I am a thunder gun"),
+			Source:      2,
+			Target:      5,
+			Stream:      100,
+			Sequence:    3,
+			Subsequence: 99,
+			Data:        []byte("I am a thunder gun"),
 		},
 		core.Chunk{
-			Source:   112,
-			Target:   52,
-			Stream:   1030,
-			Sequence: 1122,
-			Data:     []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Source:      112,
+			Target:      52,
+			Stream:      1030,
+			Sequence:    1122,
+			Subsequence: 1,
+			Data:        []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 		},
 		core.Chunk{
 			Source:   23,
@@ -167,7 +169,11 @@ func TestSerializeAndParseChunks(t *testing.T) {
 		}
 		c.Inc(time.Millisecond * 10000)
 		serializedData = make([]byte, 100000)
+
+		// TODO: Once got a deadlock on this read.  It's probably because of the fake clock, but it
+		// should be fixed if possible.
 		n, err := conn.Read(serializedData)
+
 		So(err, ShouldBeNil)
 		serializedData = serializedData[0:n]
 

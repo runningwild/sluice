@@ -7,6 +7,7 @@ import (
 type NodeId uint16
 type StreamId uint16
 type SequenceId uint32
+type SubsequenceIndex uint16
 
 type Mode int
 
@@ -69,6 +70,7 @@ const (
 // StreamConfig contains all the config data for a user-defined stream.
 type StreamConfig struct {
 	Name      string // Arbitrary name to refer to the stream by, must be unique among all streams.
+	Id        StreamId
 	Mode      Mode
 	Broadcast bool
 }

@@ -21,16 +21,17 @@ type Chunk struct {
 	// SourceAddr is set, for incoming dispatched, to the addr of the host that sent it to us.
 	SourceAddr network.Addr
 
-	Source   NodeId
-	Target   NodeId
-	Stream   StreamId
-	Sequence SequenceId
-	Data     []byte
+	Source      NodeId
+	Target      NodeId
+	Stream      StreamId
+	Sequence    SequenceId
+	Subsequence SubsequenceIndex
+	Data        []byte
 }
 
 // SerializedLength returns the number of bytes needed to serialize chunk.
 func (c *Chunk) SerializedLength() int {
-	return 12 + len(c.Data)
+	return 14 + len(c.Data)
 }
 
 // AppendChunk serializes payload, appends it to buf, and returns buf.
@@ -39,6 +40,7 @@ func AppendChunk(buf []byte, payload *Chunk) []byte {
 	buf = AppendNodeId(buf, payload.Target)
 	buf = AppendStreamId(buf, payload.Stream)
 	buf = AppendSequenceId(buf, payload.Sequence)
+	buf = AppendSubsequenceIndex(buf, payload.Subsequence)
 	return AppendBytesWithLength(buf, payload.Data)
 }
 
@@ -48,6 +50,7 @@ func ConsumeChunk(buf []byte, payload *Chunk) ([]byte, error) {
 	buf = ConsumeNodeId(buf, &payload.Target)
 	buf = ConsumeStreamId(buf, &payload.Stream)
 	buf = ConsumeSequenceId(buf, &payload.Sequence)
+	buf = ConsumeSubsequenceIndex(buf, &payload.Subsequence)
 	return ConsumeBytesWithLength(buf, &payload.Data)
 }
 

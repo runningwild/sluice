@@ -4,25 +4,25 @@ import (
 	"fmt"
 )
 
-// ConsumeBool consumes a boolean payload from the from of data and returns data.
+// ConsumeBool consumes a boolean payload from the front of data and returns data.
 func ConsumeBool(data []byte, payload *bool) []byte {
 	*payload = data[0] != 0
 	return data[1:]
 }
 
-// ConsumeUint32 consumes a uint32 payload from the from of data and returns data.
+// ConsumeUint32 consumes a uint32 payload from the front of data and returns data.
 func ConsumeUint32(data []byte, payload *uint32) []byte {
 	*payload = (uint32(data[3]) << 24) | (uint32(data[2]) << 16) | (uint32(data[1]) << 8) | uint32(data[0])
 	return data[4:]
 }
 
-// ConsumeUint16 consumes a uint16 payload from the from of data and returns data.
+// ConsumeUint16 consumes a uint16 payload from the front of data and returns data.
 func ConsumeUint16(data []byte, payload *uint16) []byte {
 	*payload = (uint16(data[1]) << 8) | uint16(data[0])
 	return data[2:]
 }
 
-// ConsumeStreamId consumes a StreamId payload from the from of data and returns data.
+// ConsumeStreamId consumes a StreamId payload from the front of data and returns data.
 func ConsumeStreamId(data []byte, payload *StreamId) []byte {
 	var p uint16
 	data = ConsumeUint16(data, &p)
@@ -30,7 +30,7 @@ func ConsumeStreamId(data []byte, payload *StreamId) []byte {
 	return data
 }
 
-// ConsumeNodeId consumes a NodeId payload from the from of data and returns data.
+// ConsumeNodeId consumes a NodeId payload from the front of data and returns data.
 func ConsumeNodeId(data []byte, payload *NodeId) []byte {
 	var p uint16
 	data = ConsumeUint16(data, &p)
@@ -38,7 +38,7 @@ func ConsumeNodeId(data []byte, payload *NodeId) []byte {
 	return data
 }
 
-// ConsumeSequenceId consumes a SequenceId payload from the from of data and returns data.
+// ConsumeSequenceId consumes a SequenceId payload from the front of data and returns data.
 func ConsumeSequenceId(data []byte, payload *SequenceId) []byte {
 	var p uint32
 	data = ConsumeUint32(data, &p)
@@ -46,7 +46,15 @@ func ConsumeSequenceId(data []byte, payload *SequenceId) []byte {
 	return data
 }
 
-// ConsumeStringWithLength consumes a string payload from the from of data and returns data.
+// ConsumeSubsequenceIndex consumes a SubsequenceIndex payload from the front of data and returns data.
+func ConsumeSubsequenceIndex(data []byte, payload *SubsequenceIndex) []byte {
+	var p uint16
+	data = ConsumeUint16(data, &p)
+	*payload = SubsequenceIndex(p)
+	return data
+}
+
+// ConsumeStringWithLength consumes a string payload from the front of data and returns data.
 func ConsumeStringWithLength(data []byte, payload *string) ([]byte, error) {
 	var length uint16
 	data = ConsumeUint16(data, &length)
@@ -58,7 +66,7 @@ func ConsumeStringWithLength(data []byte, payload *string) ([]byte, error) {
 	return data[int(length):], nil
 }
 
-// ConsumeBytesWithLength consumes a bytes payload from the from of data and returns data.
+// ConsumeBytesWithLength consumes a bytes payload from the front of data and returns data.
 func ConsumeBytesWithLength(data []byte, payload *[]byte) ([]byte, error) {
 	var length uint16
 	data = ConsumeUint16(data, &length)
@@ -110,6 +118,11 @@ func AppendNodeId(data []byte, payload NodeId) []byte {
 // AppendSequenceId appends a SequenceId payload to data and returns data.
 func AppendSequenceId(data []byte, payload SequenceId) []byte {
 	return AppendUint32(data, uint32(payload))
+}
+
+// AppendSubsequenceIndex appends a SubsequenceIndex payload to data and returns data.
+func AppendSubsequenceIndex(data []byte, payload SubsequenceIndex) []byte {
+	return AppendUint16(data, uint16(payload))
 }
 
 // AppendStringWithLength appends a string payload to data and returns data.
