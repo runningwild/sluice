@@ -4,19 +4,52 @@ import (
 	"fmt"
 )
 
+// NodeId is used to identify clients.  The Host has NodeId == 1.  NodeIds are not reused, so it a
+// client disconnects and then reconnects it will be assigned a new, previously unused, NodeId.
 type NodeId uint16
+
+// StreamId is used to distinguish different streams.  Users identify streams with arbitrary
+// strings, and those are assigned StreamIds.  There are also reserved StreamIds for all of the
+// low-level data that sluice needs to send.
 type StreamId uint16
+
+// SequenceId is used to order chunks within a stream.  Even unordered and unreliable streams use
+// SequenceIds, they are necessary for reassembling chunked packets.  The SequenceId of streams
+// starts at 1 and is incremented for each chunk.
 type SequenceId uint32
+
+// SubsequenceIndex is used to order chunks that all came from the same packet.  If a packet did not
+// get split into multiple packets the SubsequenceIndex will be 0, otherwise the first chunk in that
+// packet will be 1, and the index will be incremented for each successive chunk.  Note that for a
+// packet that is split into multiple chunks the SequenceId and SubsequenceIndex will both increment
+// from each chunk in the sequence to the next.
 type SubsequenceIndex uint16
 
+// Mode defines what kind of reliability is expected on a stream.  Regardless of the mode, all
+// packets that do arrive will be subject to a CRC, and will be reassembled into their original
+// length.  Duplicate packets are also removed for all modes.
 type Mode int
 
 const (
+	// ModeUnreliableUnordered indicates that packets in a stream can arrive out of order and any
+	// packets that are dropped will not be resent.  This is the mode that is most similar to UDP
+	// and has the least overhead.
 	ModeUnreliableUnordered = iota
-	ModeUnreliableDeduped
+
+	// ModeUnreliableOrdered indicates that packets may be dropped, but packets that do arrive will
+	// be received in the order that they were sent.  This means that a packet may technically
+	// arrive late and we will reject it because a new packet has already arrived and we don't want
+	// anything on this stream to be received out of order.
 	ModeUnreliableOrdered
+
+	// ModeReliableUnordered indicates that all packets on this stream must be received, but that
+	// they may be received out of order.
 	ModeReliableUnordered
+
+	// ModeReliableOrdered indicates that all packets on this stream must be received, and they must
+	// be received in the order they were sent.  This is the mode that is most similar to TCP.
 	ModeReliableOrdered
+
 	ModeMax
 )
 

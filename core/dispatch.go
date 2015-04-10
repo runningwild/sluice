@@ -21,17 +21,33 @@ type Chunk struct {
 	// SourceAddr is set, for incoming dispatched, to the addr of the host that sent it to us.
 	SourceAddr network.Addr
 
-	Source      NodeId
-	Target      NodeId
+	// TODO: If we make the configs available when serializing/parsing we could remove the bytes
+	// needed for the Target field if it is a broadcast stream.
+	Target NodeId
+	Source NodeId
+
 	Stream      StreamId
 	Sequence    SequenceId
 	Subsequence SubsequenceIndex
-	Data        []byte
+
+	// Data holds all of the user-level data.
+	Data []byte
 }
 
 // SerializedLength returns the number of bytes needed to serialize chunk.
 func (c *Chunk) SerializedLength() int {
 	return 14 + len(c.Data)
+}
+
+// SequenceStart returns the SequenceId of the first chunk in the packet that this chunk originated
+// from.
+func (c *Chunk) SequenceStart() SequenceId {
+	if c.Subsequence == 0 {
+		return c.Sequence
+	}
+	// Subsequence indexes are 1-based, so we have to add a 1 here to make up for the 1 that we are
+	// subtracting with the -c.Subsequence.
+	return 1 + c.Sequence - SequenceId(c.Subsequence)
 }
 
 // AppendChunk serializes payload, appends it to buf, and returns buf.
