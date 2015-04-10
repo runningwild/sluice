@@ -17,7 +17,6 @@ func WriterRoutine(config StreamConfig, target NodeId, maxChunkDataSize int, pac
 	}
 	var sequence SequenceId = 0
 	for packet := range packets {
-		sequence++
 		if len(packet) <= maxChunkDataSize {
 			chunks <- Chunk{
 				Source:      0, // Irrelevant unless being sent from the host
@@ -27,6 +26,7 @@ func WriterRoutine(config StreamConfig, target NodeId, maxChunkDataSize int, pac
 				Subsequence: 0,
 				Data:        packet,
 			}
+			sequence++
 			continue
 		}
 
@@ -34,21 +34,23 @@ func WriterRoutine(config StreamConfig, target NodeId, maxChunkDataSize int, pac
 		// A zero-length chunk will be appended if the last chunk length would otherwise have been
 		// exactly maxChunkDataSize.  This way the last chunk in a sequence can be detected by
 		// checking its size.
-		var index SubsequenceIndex = 0
-		lastSend := -1
-		for len(packet) > 0 && lastSend < maxChunkDataSize {
-			index++
+		var index SubsequenceIndex = 1
+		lastSend := maxChunkDataSize
+		for len(packet) > 0 || lastSend == maxChunkDataSize {
 			chunkData := packet
 			if len(chunkData) > maxChunkDataSize {
 				chunkData = chunkData[0:maxChunkDataSize]
 			}
 			chunks <- Chunk{
-				Source:   0, // Irrelevant unless being sent from the host
-				Target:   target,
-				Stream:   config.Id,
-				Sequence: sequence,
-				Data:     chunkData,
+				Source:      0, // Irrelevant unless being sent from the host
+				Target:      target,
+				Stream:      config.Id,
+				Sequence:    sequence,
+				Subsequence: index,
+				Data:        chunkData,
 			}
+			index++
+			sequence++
 			packet = packet[len(chunkData):]
 			lastSend = len(chunkData)
 		}
@@ -73,9 +75,8 @@ func makeChunkSequencer(sequence SequenceId) *chunkSequencer {
 }
 
 func (cs *chunkSequencer) AddChunk(chunk *Chunk) {
-	sequence := chunk.Sequence - SequenceId(chunk.Subsequence-1)
-	if sequence != cs.sequence {
-		panic(fmt.Sprintf("Chunk was from sequence %d, expected %d.", sequence, cs.sequence))
+	if chunk.SequenceStart() != cs.sequence {
+		panic(fmt.Sprintf("Chunk was from sequence %d, expected %d.", chunk.SequenceStart(), cs.sequence))
 	}
 	cs.chunks[chunk.Subsequence] = chunk
 	if cs.numChunks == 0 {
@@ -139,7 +140,7 @@ func MakeUnreliableUnorderedChunkTracker(maxAge SequenceId) ChunkTracker {
 	}
 }
 func (ct *UnreliableUnorderedChunkTracker) AddChunk(chunk Chunk) [][]byte {
-	sequence := chunk.Sequence - SequenceId(chunk.Subsequence-1)
+	sequence := chunk.SequenceStart()
 	if sequence < ct.horizon {
 		return nil
 	}
