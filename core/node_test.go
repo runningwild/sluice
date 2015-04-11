@@ -52,8 +52,8 @@ func TestWriterRoutine(t *testing.T) {
 				So(len(chunk.Data), ShouldBeLessThanOrEqualTo, maxChunkDataSize)
 			}
 		})
-		Convey("Output is properly reassembled by a ChunkTracker.", func() {
-			ct := core.MakeUnreliableUnorderedChunkTracker(1)
+		Convey("Output is properly reassembled by a ChunkMerger.", func() {
+			ct := core.MakeUnreliableUnorderedChunkMerger(1)
 			var reassembled []string
 			for _, chunk := range chunks {
 				dechunked := ct.AddChunk(chunk)
@@ -69,7 +69,7 @@ func TestWriterRoutine(t *testing.T) {
 	})
 }
 
-func TestChunkTrackers(t *testing.T) {
+func TestChunkMergers(t *testing.T) {
 	chunks := []core.Chunk{
 		core.Chunk{
 			Sequence:    3,
@@ -107,10 +107,10 @@ func TestChunkTrackers(t *testing.T) {
 			Data:        []byte("123"),
 		},
 	}
-	Convey("ChunkTrackers work properly.", t, func() {
-		Convey("UnreliableUnorderedChunkTrackers work properly", func() {
+	Convey("ChunkMergers work properly.", t, func() {
+		Convey("UnreliableUnorderedChunkMergers work properly", func() {
 			Convey("when chunks come in order", func() {
-				ct := core.MakeUnreliableUnorderedChunkTracker(10)
+				ct := core.MakeUnreliableUnorderedChunkMerger(10)
 				packets := ct.AddChunk(chunks[0])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[1])
@@ -133,7 +133,7 @@ func TestChunkTrackers(t *testing.T) {
 			})
 
 			Convey("when chunks come out of order", func() {
-				ct := core.MakeUnreliableUnorderedChunkTracker(10)
+				ct := core.MakeUnreliableUnorderedChunkMerger(10)
 				packets := ct.AddChunk(chunks[1])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[0])
@@ -156,7 +156,7 @@ func TestChunkTrackers(t *testing.T) {
 			})
 
 			Convey("when duplicate chunks show up", func() {
-				ct := core.MakeUnreliableUnorderedChunkTracker(10)
+				ct := core.MakeUnreliableUnorderedChunkMerger(10)
 				packets := ct.AddChunk(chunks[0])
 				So(len(packets), ShouldEqual, 0)
 				packets = ct.AddChunk(chunks[1])
@@ -203,7 +203,7 @@ func TestChunkTrackers(t *testing.T) {
 			})
 
 			Convey("when old chunks show up", func() {
-				ct := core.MakeUnreliableUnorderedChunkTracker(2)
+				ct := core.MakeUnreliableUnorderedChunkMerger(2)
 				packets := ct.AddChunk(chunks[0])
 				So(len(packets), ShouldEqual, 0)
 

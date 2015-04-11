@@ -22,6 +22,12 @@ func ConsumeUint16(data []byte, payload *uint16) []byte {
 	return data[2:]
 }
 
+// ConsumeUint8 consumes a uint8 payload from the front of data and returns data.
+func ConsumeUint8(data []byte, payload *uint8) []byte {
+	*payload = (uint8(data[1]) << 8) | uint8(data[0])
+	return data[1:]
+}
+
 // ConsumeStreamId consumes a StreamId payload from the front of data and returns data.
 func ConsumeStreamId(data []byte, payload *StreamId) []byte {
 	var p uint16
@@ -103,6 +109,11 @@ func AppendUint16(data []byte, payload uint16) []byte {
 	data = append(data, byte(payload&0xff))
 	payload = payload >> 8
 	return append(data, byte(payload&0xff))
+}
+
+// AppendUint8 appends a uint8 payload to data and returns data.
+func AppendUint8(data []byte, payload uint8) []byte {
+	return append(data, payload)
 }
 
 // AppendStreamId appends a StreamId payload to data and returns data.

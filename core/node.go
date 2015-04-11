@@ -116,30 +116,30 @@ func (cs *chunkSequencer) GetPacket() []byte {
 	return packet
 }
 
-// ChunkTracker provides a way of tracking incoming chunks and assembling them into packets.
-type ChunkTracker interface {
-	// AddChunk adds chunk to the tracker.  Any packets that are available after this addition are
+// ChunkMerger provides a way of tracking incoming chunks and assembling them into packets.
+type ChunkMerger interface {
+	// AddChunk adds chunk to the merger.  Any packets that are available after this addition are
 	// returned in the order they were sent.
 	AddChunk(chunk Chunk) [][]byte
 }
 
-type UnreliableUnorderedChunkTracker struct {
+type UnreliableUnorderedChunkMerger struct {
 	chunks  map[SequenceId]*chunkSequencer
 	horizon SequenceId
 	maxAge  SequenceId
 }
 
-func MakeUnreliableUnorderedChunkTracker(maxAge SequenceId) ChunkTracker {
+func MakeUnreliableUnorderedChunkMerger(maxAge SequenceId) ChunkMerger {
 	if maxAge < 0 {
 		maxAge = 0
 	}
-	return &UnreliableUnorderedChunkTracker{
+	return &UnreliableUnorderedChunkMerger{
 		chunks:  make(map[SequenceId]*chunkSequencer),
 		horizon: 0,
 		maxAge:  maxAge,
 	}
 }
-func (ct *UnreliableUnorderedChunkTracker) AddChunk(chunk Chunk) [][]byte {
+func (ct *UnreliableUnorderedChunkMerger) AddChunk(chunk Chunk) [][]byte {
 	sequence := chunk.SequenceStart()
 	if sequence < ct.horizon {
 		return nil

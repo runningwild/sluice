@@ -66,35 +66,45 @@ func (m Mode) Deduped() bool {
 const (
 	streamMaxUserDefined StreamId = 1<<15 + iota
 
-	// Confirm packets are sent from the client to the host to confirm receipt of reliable packets.
+	// Note that all of the sluice-level streams always talk about chunks.  We don't want any of
+	// these streams to rely on any high-level logic, so all of them always deal in individual
+	// chunks and never expect packets to be reliable.
+
+	// Confirm chunks are sent from the client to the host to confirm receipt of reliable chunks.
 	streamConfirm
 
-	// Truncate packets are sent from the host to the client to let the client know which packets
-	// it can forget about.
+	// Truncate chunks are sent from the host to the client to let the client know which chunks it
+	// can forget about.
 	streamTruncate
 
-	// Resend packets are sent from the host to the client to ask it to resend a packet that it
+	// Resend chunks are sent from the host to the client to ask it to resend a chunk that the host
 	// never received.
 	streamResend
 
-	// Position packets are sent from the client to the host to let it know what packets it should
+	// Position chunks are sent from the client to the host to let it know what chunks it should
 	// have received by now.
 	streamPosition
 
-	// Ping and Pong packets are sent between any two connected nodes to gauge the round trip time
-	// between those nodes.
+	// Ping/Pong chunks are initiated by the host (Ping) and responded to by the client (Pong).
 	streamPing
 	streamPong
 
-	// Punch packets are sent from the host to a client to indicate that it should start or stop
+	// Ding/Dang/Dong chunks are a way for the host to gague how fast two client might be able to
+	// talk to each other.  The host sends a Ding to client A with the address of client B, client A
+	// sends a Dang to client B, who then sends a Dong back to the host.
+	streamDing
+	streamDang
+	streamDong
+
+	// Punch chunks are sent from the host to a client to indicate that it should start or stop
 	// sending data directly to another client.
 	streamPunch
 
-	// Stats packets are sent from client to the host to let it know what sort of delays it sees
+	// Stats chunks are sent from client to the host to let it know what sort of delays it sees
 	// on a ping/pong with whatever clients it is connected with.
 	streamStats
 
-	// Join and Leave packets are sent from the host to each client every time another client joins
+	// Join and Leave chunks are sent from the host to each client every time another client joins
 	// or leaves the sluice.
 	streamJoin
 	streamLeave
@@ -110,13 +120,21 @@ type StreamConfig struct {
 
 // Config contains the set of all user-defined streams.  It is read-only after creation, so it is
 // safe for concurrent access.
-type Config map[StreamId]StreamConfig
+type Config struct {
+	Streams map[StreamId]StreamConfig
 
-func (c Config) Validate() error {
-	if c == nil {
-		return fmt.Errorf("Config cannot be nil")
+	// MaxChunkDataSize is the maximum size a packet can be before it is broken into chunks.
+	MaxChunkDataSize int
+}
+
+func (c *Config) Validate() error {
+	if c == nil || c.Streams == nil {
+		return fmt.Errorf("Config and Config.Stream must both not be nil")
 	}
-	for streamId := range c {
+	if c.MaxChunkDataSize < 25 || c.MaxChunkDataSize > 30000 {
+		return fmt.Errorf("Config.MaxChunkDataSize must be in the range (25, 30000)")
+	}
+	for streamId := range c.Streams {
 		if streamId == 0 {
 			return fmt.Errorf("Config cannot contain streams with id == 0")
 		}
@@ -125,7 +143,7 @@ func (c Config) Validate() error {
 		}
 	}
 	names := make(map[string]struct{})
-	for _, stream := range c {
+	for _, stream := range c.Streams {
 		if _, ok := names[stream.Name]; ok {
 			return fmt.Errorf("Config cannot have two streams with the same name (%q)", stream.Name)
 		}
@@ -136,8 +154,8 @@ func (c Config) Validate() error {
 
 // GetIdFromName returns the StreamId of the stream with the specified name, or 0 if no such stream
 // is in the config.
-func (c Config) GetIdFromName(name string) StreamId {
-	for id, stream := range c {
+func (c *Config) GetIdFromName(name string) StreamId {
+	for id, stream := range c.Streams {
 		if stream.Name == name {
 			return id
 		}
@@ -147,8 +165,8 @@ func (c Config) GetIdFromName(name string) StreamId {
 
 // GetStreamConfigByName returns the StreamConfig for the specified name, or 0 if no such stream is
 // in the config.
-func (c Config) GetStreamConfigByName(name string) *StreamConfig {
-	for _, stream := range c {
+func (c *Config) GetStreamConfigByName(name string) *StreamConfig {
+	for _, stream := range c.Streams {
 		if stream.Name == name {
 			return &stream
 		}
@@ -158,8 +176,8 @@ func (c Config) GetStreamConfigByName(name string) *StreamConfig {
 
 // GetStreamConfigById returns the StreamConfig for the specified id, or 0 if no such stream is in
 // the config.
-func (c Config) GetStreamConfigById(id StreamId) *StreamConfig {
-	stream, ok := c[id]
+func (c *Config) GetStreamConfigById(id StreamId) *StreamConfig {
+	stream, ok := c.Streams[id]
 	if !ok {
 		return nil
 	}
