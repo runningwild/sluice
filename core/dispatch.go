@@ -18,7 +18,9 @@ func init() {
 }
 
 type Chunk struct {
-	// SourceAddr is set, for incoming dispatched, to the addr of the host that sent it to us.
+	// SourceAddr is set, for incoming dispatches, to the addr of the host that sent it to us.  This
+	// is primary for the host, so it can verify that a particular value of SourceAddr always has
+	// the same value for Source.
 	SourceAddr network.Addr
 
 	// TODO: If we make the configs available when serializing/parsing we could remove the bytes

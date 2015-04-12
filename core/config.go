@@ -2,6 +2,9 @@ package core
 
 import (
 	"fmt"
+	"time"
+
+	"github.com/runningwild/clock"
 )
 
 // NodeId is used to identify clients.  The Host has NodeId == 1.  NodeIds are not reused, so it a
@@ -125,6 +128,24 @@ type Config struct {
 
 	// MaxChunkDataSize is the maximum size a packet can be before it is broken into chunks.
 	MaxChunkDataSize int
+
+	Logger Printer
+
+	Clock clock.Clock
+
+	// Minimum amount of time a client will wait between sending position chunks.
+	PositionChunkInterval time.Duration
+}
+
+type Printer interface {
+	Printf(format string, v ...interface{})
+}
+
+func (c *Config) Printf(format string, v ...interface{}) {
+	if c.Logger == nil {
+		return
+	}
+	c.Logger.Printf(format, v)
 }
 
 func (c *Config) Validate() error {

@@ -29,7 +29,11 @@ func checkSequenceTracker(st *core.SequenceTracker, max core.SequenceId, sids ma
 }
 
 func SequenceTrackerTest(t *testing.T) {
-	st := core.MakeSequenceTracker(2345, 0, 10)
+	st := core.MakeSequenceTracker(2345, 77, 10)
+	Convey("It remembers its own stream and node ids.", t, func() {
+		So(st.StreamId(), ShouldEqual, 2345)
+		So(st.NodeId(), ShouldEqual, 77)
+	})
 	Convey("Everything under maxContiguous is contained by the tracker.", t, func() {
 		So(st.StreamId(), ShouldEqual, core.StreamId(2345))
 		So(st.Contains(1), ShouldBeTrue)

@@ -22,6 +22,8 @@ type SequenceTracker struct {
 	others map[SequenceId]bool
 }
 
+// MakeSequenceTracker returns a SequenceTracker for the specified stream/node.  It will start
+// tracking at start, i.e. start is the first sequence that it doesn't have yet.
 func MakeSequenceTracker(stream StreamId, node NodeId, start SequenceId) *SequenceTracker {
 	return &SequenceTracker{
 		stream:        stream,
