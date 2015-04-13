@@ -4,8 +4,6 @@ import (
 	"fmt"
 )
 
-type Node struct{}
-
 // WriterRoutine reads channel packets, converts each packet into one or more chunks each, then
 // sends those along channel chunks.
 func WriterRoutine(config StreamConfig, target NodeId, maxChunkDataSize int, packets <-chan []byte, chunks chan<- Chunk) {

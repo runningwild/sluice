@@ -4,6 +4,8 @@ type streamNodeId struct {
 	stream StreamId
 	node   NodeId
 }
+
+// PacketTracker is used to keep track of Chunks that might need to be resent later.
 type PacketTracker map[streamNodeId]map[SequenceId]Chunk
 
 // Add adds chunk to the tracker.

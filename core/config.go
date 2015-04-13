@@ -121,9 +121,16 @@ type StreamConfig struct {
 	Broadcast bool
 }
 
-// Config contains the set of all user-defined streams.  It is read-only after creation, so it is
-// safe for concurrent access.
+// Config contains information for how to run the sluice network.
 type Config struct {
+	GlobalConfig
+
+	// NodeId of the client with this config.
+	Node NodeId
+}
+
+// GlobalConfig contains the configuration for a sluice network that is constant for all nodes.
+type GlobalConfig struct {
 	Streams map[StreamId]StreamConfig
 
 	// MaxChunkDataSize is the maximum size a packet can be before it is broken into chunks.
@@ -133,8 +140,9 @@ type Config struct {
 
 	Clock clock.Clock
 
-	// Minimum amount of time a client will wait between sending position chunks.
-	PositionChunkInterval time.Duration
+	// Min and max amount of time a client will wait between sending position chunks.
+	PositionChunkMin time.Duration
+	PositionChunkMax time.Duration
 }
 
 type Printer interface {
