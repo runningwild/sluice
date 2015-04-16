@@ -85,3 +85,40 @@ func TestTruncateChunks(t *testing.T) {
 		So(err, ShouldNotBeNil)
 	})
 }
+
+func TestPositionChunks(t *testing.T) {
+	req := core.PositionUpdate{}
+	for i := 1; i < 100; i++ {
+		req[core.StreamId(i)] = core.SequenceId(i + 1)
+	}
+	Convey("The data that comes out of a position chunk is the same as the data that went into it.", t, func() {
+		var config core.Config
+		config.MaxChunkDataSize = 10000
+		datas := core.MakePositionChunkDatas(&config, req)
+		So(len(datas), ShouldEqual, 1)
+		parsed, err := core.ParsePositionChunkData(datas[0])
+		So(err, ShouldBeNil)
+		So(parsed, ShouldResemble, req)
+	})
+	Convey("Position data can be split across multiple chunks.", t, func() {
+		var config core.Config
+		config.MaxChunkDataSize = 20
+		datas := core.MakePositionChunkDatas(&config, req)
+		So(len(datas), ShouldBeGreaterThan, 1)
+		merged := make(core.PositionUpdate)
+		for _, data := range datas {
+			parsed, err := core.ParsePositionChunkData(data)
+			So(err, ShouldBeNil)
+			for stream, sequence := range parsed {
+				_, ok := merged[stream]
+				So(ok, ShouldBeFalse)
+				merged[stream] = sequence
+			}
+		}
+		So(merged, ShouldResemble, req)
+	})
+	Convey("Malformed position chunks return errors.", t, func() {
+		_, err := core.ParsePositionChunkData([]byte{1})
+		So(err, ShouldNotBeNil)
+	})
+}
