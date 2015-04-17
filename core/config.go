@@ -67,50 +67,50 @@ func (m Mode) Deduped() bool {
 }
 
 const (
-	streamMaxUserDefined StreamId = 1<<15 + iota
+	StreamMaxUserDefined StreamId = 1<<15 + iota
 
 	// Note that all of the sluice-level streams always talk about chunks.  We don't want any of
 	// these streams to rely on any high-level logic, so all of them always deal in individual
 	// chunks and never expect packets to be reliable.
 
 	// Confirm chunks are sent from the client to the host to confirm receipt of reliable chunks.
-	streamConfirm
+	StreamConfirm
 
 	// Truncate chunks are sent from the host to the client to let the client know which chunks it
 	// can forget about.
-	streamTruncate
+	StreamTruncate
 
 	// Resend chunks are sent from the host to the client to ask it to resend a chunk that the host
 	// never received.
-	streamResend
+	StreamResend
 
 	// Position chunks are sent from the client to the host to let it know what chunks it should
 	// have received by now.
-	streamPosition
+	StreamPosition
 
 	// Ping/Pong chunks are initiated by the host (Ping) and responded to by the client (Pong).
-	streamPing
-	streamPong
+	StreamPing
+	StreamPong
 
 	// Ding/Dang/Dong chunks are a way for the host to gague how fast two client might be able to
 	// talk to each other.  The host sends a Ding to client A with the address of client B, client A
 	// sends a Dang to client B, who then sends a Dong back to the host.
-	streamDing
-	streamDang
-	streamDong
+	StreamDing
+	StreamDang
+	StreamDong
 
 	// Punch chunks are sent from the host to a client to indicate that it should start or stop
 	// sending data directly to another client.
-	streamPunch
+	StreamPunch
 
 	// Stats chunks are sent from client to the host to let it know what sort of delays it sees
 	// on a ping/pong with whatever clients it is connected with.
-	streamStats
+	StreamStats
 
 	// Join and Leave chunks are sent from the host to each client every time another client joins
 	// or leaves the sluice.
-	streamJoin
-	streamLeave
+	StreamJoin
+	StreamLeave
 )
 
 // StreamConfig contains all the config data for a user-defined stream.
@@ -127,6 +127,8 @@ type Config struct {
 
 	// NodeId of the client with this config.
 	Node NodeId
+
+	Logger Printer
 }
 
 // GlobalConfig contains the configuration for a sluice network that is constant for all nodes.
@@ -135,8 +137,6 @@ type GlobalConfig struct {
 
 	// MaxChunkDataSize is the maximum size a packet can be before it is broken into chunks.
 	MaxChunkDataSize int
-
-	Logger Printer
 
 	Clock clock.Clock
 
@@ -153,7 +153,7 @@ func (c *Config) Printf(format string, v ...interface{}) {
 	if c.Logger == nil {
 		return
 	}
-	c.Logger.Printf(format, v)
+	c.Logger.Printf(format, v...)
 }
 
 func (c *Config) Validate() error {
@@ -167,8 +167,8 @@ func (c *Config) Validate() error {
 		if streamId == 0 {
 			return fmt.Errorf("Config cannot contain streams with id == 0")
 		}
-		if streamId >= streamMaxUserDefined {
-			return fmt.Errorf("Config cannot contain streams with id >= %d", streamMaxUserDefined)
+		if streamId >= StreamMaxUserDefined {
+			return fmt.Errorf("Config cannot contain streams with id >= %d", StreamMaxUserDefined)
 		}
 	}
 	names := make(map[string]struct{})

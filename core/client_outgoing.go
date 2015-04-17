@@ -8,16 +8,20 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 	pt := make(PacketTracker)
 	positions := make(PositionUpdate)
 	reminder := MakeStreamReminder(config.PositionChunkMin, config.PositionChunkMax, config.Clock)
+	defer reminder.Close()
 	for {
 		select {
 
 		// Take chunks that came directly from the user (after being chunkified from the original
 		// packet) and send them to the host.  Chunks being sent on reliable streams are also
 		// tracked and used to determine when to send the next position chunk.
-		case chunk := <-incoming:
+		case chunk, ok := <-incoming:
+			if !ok {
+				return
+			}
 			stream := config.GetStreamConfigById(chunk.Stream)
 			if stream == nil {
-				config.Logger.Printf("tried to send a chunk on unknown stream %d", chunk.Stream)
+				config.Printf("tried to send a chunk on unknown stream %d", chunk.Stream)
 				break
 			}
 			outgoing <- chunk
@@ -33,10 +37,13 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 		// these chunks by sending all chunks mentioned in them to the host.  If we don't have one
 		// of those chunks then something went horribly wrong and we will probably be disconnected
 		// by the host eventually.
-		case chunk := <-resend:
+		case chunk, ok := <-resend:
+			if !ok {
+				return
+			}
 			req, err := ParseResendChunkData(chunk.Data)
 			if err != nil {
-				config.Logger.Printf("error parsing resend chunk data: %v", err)
+				config.Printf("error parsing resend chunk data: %v", err)
 				break
 			}
 			for stream, sequences := range req {
@@ -44,7 +51,7 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 					if chunk := pt.Get(stream, config.Node, sequence); chunk != nil {
 						outgoing <- *chunk
 					} else {
-						config.Logger.Printf("Got a resend chunk for Stream/Sequence %d/%d, but didn't have that chunk.", stream, sequence)
+						config.Printf("Got a resend chunk for Stream/Sequence %d/%d, but didn't have that chunk.", stream, sequence)
 					}
 				}
 			}
@@ -52,10 +59,13 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 		// Truncate chunks are sent here from ClientRecvChunksHandler, they let us know what chunks
 		// we no longer have to track.  These chunks typically come less rapidly than other chunks
 		// because the only effect of them is to free up memory.
-		case chunk := <-truncate:
+		case chunk, ok := <-truncate:
+			if !ok {
+				return
+			}
 			req, err := ParseTruncateChunkData(chunk.Data)
 			if err != nil {
-				config.Logger.Printf("error parsing truncate chunk data: %v", err)
+				config.Printf("error parsing truncate chunk data: %v", err)
 				break
 			}
 			for stream, sequence := range req {
@@ -75,7 +85,7 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 			datas := MakePositionChunkDatas(config, p)
 			for _, data := range datas {
 				outgoing <- Chunk{
-					Stream: streamPosition,
+					Stream: StreamPosition,
 					Source: config.Node,
 					Data:   data,
 				}

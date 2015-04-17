@@ -76,7 +76,7 @@ func (s streamIdToSequenceId) makeChunkDatas(config *Config) [][]byte {
 func (s *streamIdToSequenceId) parseChunkDatas(data []byte) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("unexpected parse error while parsing a resend chunk: %q", r)
+			err = fmt.Errorf("unexpected parse error while parsing chunk data: %q", r)
 		}
 	}()
 	for len(data) > 0 {
