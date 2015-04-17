@@ -9,7 +9,7 @@ import (
 type ResendRequest map[StreamId][]SequenceId
 
 // MakeResendChunkDatas serializes the data in req into zero or more chunks that convey all of the
-// data expressed in it.  Each data can be sent as an independant chunk that will be usable even if
+// data expressed in it.  Each chunk can be sent as an independant chunk that will be usable even if
 // none of the other chunks are received.  An individual req chunk's data is repeated pairs of
 // <StreamId, SequenceId>
 func MakeResendChunkDatas(config *Config, req ResendRequest) [][]byte {
@@ -93,7 +93,7 @@ func (s *streamIdToSequenceId) parseChunkDatas(data []byte) (err error) {
 type TruncateRequest streamIdToSequenceId
 
 // MakeTruncateChunkDatas serializes the data in req into zero or more chunks that convey all of the
-// data expressed in it.  Each data can be sent as an independant chunk that will be usable even if
+// data expressed in it.  Each chunk can be sent as an independant chunk that will be usable even if
 // none of the other chunks are received.  An individual req chunk's data is repeated pairs of
 // <StreamId, SequenceId>
 func MakeTruncateChunkDatas(config *Config, req TruncateRequest) [][]byte {
@@ -114,7 +114,7 @@ func ParseTruncateChunkData(data []byte) (TruncateRequest, error) {
 type PositionUpdate streamIdToSequenceId
 
 // MakePositionChunkDatas serializes the data in req into zero or more chunks that convey all of the
-// data expressed in it.  Each data can be sent as an independant chunk that will be usable even if
+// data expressed in it.  Each chunk can be sent as an independant chunk that will be usable even if
 // none of the other chunks are received.  An individual req chunk's data is repeated pairs of
 // <StreamId, SequenceId>
 func MakePositionChunkDatas(config *Config, req PositionUpdate) [][]byte {

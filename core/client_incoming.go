@@ -6,6 +6,7 @@ package core
 // appropriate chunks are resent.
 func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan Chunk, outgoing chan<- Chunk) {
 	pt := make(PacketTracker)
+	positions := make(PositionUpdate)
 	reminder := MakeStreamReminder(config.PositionChunkMin, config.PositionChunkMax, config.Clock)
 	for {
 		select {
@@ -23,6 +24,9 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 			if stream.Mode.Reliable() {
 				pt.Add(chunk)
 				reminder.Update(stream.Id)
+				if chunk.Sequence > positions[stream.Id] {
+					positions[stream.Id] = chunk.Sequence
+				}
 			}
 
 		// Resend chunks are sent here from ClientRecvChunksHandler.  We immediately respond to
@@ -64,8 +68,18 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 		// The reminder triggers whenever we have chunks on a reliable stream that we haven't
 		// notified the host of lately.
 		case streams := <-reminder.Wait():
-			println(streams)
-			// NEXT: Make a position packet out of the data in streams.
+			p := make(PositionUpdate)
+			for _, stream := range streams {
+				p[stream] = positions[stream]
+			}
+			datas := MakePositionChunkDatas(config, p)
+			for _, data := range datas {
+				outgoing <- Chunk{
+					Stream: streamPosition,
+					Source: config.Node,
+					Data:   data,
+				}
+			}
 		}
 	}
 }
