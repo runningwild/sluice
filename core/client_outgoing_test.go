@@ -46,14 +46,12 @@ func TestClientSendChunks(t *testing.T) {
 			},
 		}
 		fromCore := make(chan core.Chunk)
-		resend := make(chan core.Chunk)
-		truncate := make(chan core.Chunk)
+		reserved := make(chan core.Chunk)
 		toHost := make(chan core.Chunk)
 		handlerIsDone := make(chan struct{})
 		defer func() {
 			close(fromCore)
-			close(resend)
-			close(truncate)
+			close(reserved)
 			for {
 				select {
 				case <-handlerIsDone:
@@ -63,7 +61,7 @@ func TestClientSendChunks(t *testing.T) {
 			}
 		}()
 		go func() {
-			core.ClientSendChunksHandler(config, fromCore, resend, truncate, toHost)
+			core.ClientSendChunksHandler(config, fromCore, reserved, toHost)
 			close(handlerIsDone)
 		}()
 
@@ -243,7 +241,7 @@ func TestClientSendChunks(t *testing.T) {
 							config.GetIdFromName("RU"): core.SequenceId(N - 1),
 						}
 						for _, data := range core.MakeTruncateChunkDatas(config, req) {
-							truncate <- core.Chunk{
+							reserved <- core.Chunk{
 								Stream: core.StreamTruncate,
 								Source: 1,
 								Data:   data,
@@ -297,7 +295,7 @@ func TestClientSendChunks(t *testing.T) {
 						req[id] = append(req[id], core.SequenceId(i))
 					}
 					for _, data := range core.MakeResendChunkDatas(config, req) {
-						resend <- core.Chunk{
+						reserved <- core.Chunk{
 							Stream: core.StreamResend,
 							Source: 1,
 							Data:   data,
@@ -327,7 +325,7 @@ func TestClientSendChunks(t *testing.T) {
 						config.GetIdFromName("RO"): 90,
 					}
 					for _, data := range core.MakeTruncateChunkDatas(config, req) {
-						truncate <- core.Chunk{
+						reserved <- core.Chunk{
 							Stream: core.StreamTruncate,
 							Source: 1,
 							Data:   data,
@@ -345,7 +343,7 @@ func TestClientSendChunks(t *testing.T) {
 							config.GetIdFromName("RO"): []core.SequenceId{60, 70, 80},
 						}
 						for _, data := range core.MakeResendChunkDatas(config, req) {
-							resend <- core.Chunk{
+							reserved <- core.Chunk{
 								Stream: core.StreamResend,
 								Source: 1,
 								Data:   data,
