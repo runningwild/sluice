@@ -45,46 +45,46 @@ func TestClientSendChunks(t *testing.T) {
 				Clock:            &clock.RealClock{},
 			},
 		}
-		incoming := make(chan core.Chunk)
+		fromCore := make(chan core.Chunk)
 		resend := make(chan core.Chunk)
 		truncate := make(chan core.Chunk)
-		outgoing := make(chan core.Chunk)
+		toHost := make(chan core.Chunk)
 		handlerIsDone := make(chan struct{})
 		defer func() {
-			close(incoming)
+			close(fromCore)
 			close(resend)
 			close(truncate)
 			for {
 				select {
 				case <-handlerIsDone:
 					return
-				case <-outgoing:
+				case <-toHost:
 				}
 			}
 		}()
 		go func() {
-			core.ClientSendChunksHandler(config, incoming, resend, truncate, outgoing)
+			core.ClientSendChunksHandler(config, fromCore, resend, truncate, toHost)
 			close(handlerIsDone)
 		}()
 
-		Convey("Copies all incoming chunks to outgoing.", func() {
+		Convey("Copies all fromCore chunks to toHost.", func() {
 			go func() {
-				incoming <- makeSimpleChunk(config.GetIdFromName("UU"), config.Node, 10)
-				incoming <- makeSimpleChunk(config.GetIdFromName("UU"), config.Node, 11)
-				incoming <- makeSimpleChunk(config.GetIdFromName("UU"), config.Node, 12)
-				incoming <- makeSimpleChunk(config.GetIdFromName("UO"), config.Node, 20)
-				incoming <- makeSimpleChunk(config.GetIdFromName("UO"), config.Node, 21)
-				incoming <- makeSimpleChunk(config.GetIdFromName("UO"), config.Node, 22)
-				incoming <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, 30)
-				incoming <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, 31)
-				incoming <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, 32)
-				incoming <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, 40)
-				incoming <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, 41)
-				incoming <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, 42)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("UU"), config.Node, 10)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("UU"), config.Node, 11)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("UU"), config.Node, 12)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("UO"), config.Node, 20)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("UO"), config.Node, 21)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("UO"), config.Node, 22)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, 30)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, 31)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, 32)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, 40)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, 41)
+				fromCore <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, 42)
 			}()
 			pt := make(core.PacketTracker)
 			for i := 0; i < 12; i++ {
-				pt.Add(<-outgoing)
+				pt.Add(<-toHost)
 			}
 			So(verifySimpleChunk(pt.Get(config.GetIdFromName("UU"), config.Node, 10)), ShouldBeTrue)
 			So(verifySimpleChunk(pt.Get(config.GetIdFromName("UU"), config.Node, 11)), ShouldBeTrue)
@@ -104,13 +104,13 @@ func TestClientSendChunks(t *testing.T) {
 			N := 100
 			go func() {
 				for i := 0; i < N; i++ {
-					incoming <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, core.SequenceId(i))
-					incoming <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, core.SequenceId(i))
+					fromCore <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, core.SequenceId(i))
+					fromCore <- makeSimpleChunk(config.GetIdFromName("RO"), config.Node, core.SequenceId(i))
 				}
 			}()
 			for i := 0; i < N; i++ {
-				<-outgoing
-				<-outgoing
+				<-toHost
+				<-toHost
 			}
 
 			Convey("Sends position chunks periodically.", func() {
@@ -129,7 +129,7 @@ func TestClientSendChunks(t *testing.T) {
 						So(count, ShouldBeLessThan, 10)
 						break getPositions
 
-					case chunk := <-outgoing:
+					case chunk := <-toHost:
 						count++
 						positions, err := core.ParsePositionChunkData(chunk.Data)
 						So(err, ShouldBeNil)
@@ -163,7 +163,7 @@ func TestClientSendChunks(t *testing.T) {
 								return
 
 							case <-time.After(10 * time.Millisecond):
-								incoming <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, next)
+								fromCore <- makeSimpleChunk(config.GetIdFromName("RU"), config.Node, next)
 								next++
 							}
 						}
@@ -181,7 +181,7 @@ func TestClientSendChunks(t *testing.T) {
 							So(countRO, ShouldBeLessThan, 5)
 							break getOnePosition
 
-						case chunk := <-outgoing:
+						case chunk := <-toHost:
 							if chunk.Stream != core.StreamPosition {
 								// The chunks we're sending will come through here, but we don't
 								// want to parse them like a position packet.
@@ -214,7 +214,7 @@ func TestClientSendChunks(t *testing.T) {
 							So(countRO, ShouldBeLessThan, 5)
 							break getBothPosition
 
-						case chunk := <-outgoing:
+						case chunk := <-toHost:
 							if chunk.Stream != core.StreamPosition {
 								// The chunks we're sending will come through here, but we don't
 								// want to parse them like a position packet.
@@ -264,7 +264,7 @@ func TestClientSendChunks(t *testing.T) {
 							So(count, ShouldBeGreaterThan, 1)
 							return
 
-						case chunk := <-outgoing:
+						case chunk := <-toHost:
 							if chunk.Stream != core.StreamPosition {
 								// The chunks we're sending will come through here, but we don't
 								// want to parse them like a position packet.
@@ -307,7 +307,7 @@ func TestClientSendChunks(t *testing.T) {
 
 				pt := make(core.PacketTracker)
 				for i := 0; i < N; i++ {
-					pt.Add(<-outgoing)
+					pt.Add(<-toHost)
 				}
 				for i := 0; i < N; i++ {
 					if i%2 == 0 {
@@ -354,7 +354,7 @@ func TestClientSendChunks(t *testing.T) {
 					}()
 					pt := make(core.PacketTracker)
 					for i := 0; i < 1; i++ {
-						pt.Add(<-outgoing)
+						pt.Add(<-toHost)
 					}
 					So(pt.Get(config.GetIdFromName("RU"), config.Node, 20), ShouldBeNil)
 					So(pt.Get(config.GetIdFromName("RU"), config.Node, 30), ShouldBeNil)

@@ -1,10 +1,10 @@
 package core
 
 // ClientSendChunksHandler handles chunks that are sent from the user to sluice so that they can be
-// dispatched.  Chunks from incoming are sent to outgoing, and if they come from a reliable stream
+// dispatched.  Chunks from fromCore are sent to toHost, and if they come from a reliable stream
 // they are also stored until they are truncated.  When resend requests come in on resend the
 // appropriate chunks are resent.
-func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan Chunk, outgoing chan<- Chunk) {
+func ClientSendChunksHandler(config *Config, fromCore, resend, truncate <-chan Chunk, toHost chan<- Chunk) {
 	pt := make(PacketTracker)
 	positions := make(PositionUpdate)
 	reminder := MakeStreamReminder(config.PositionChunkMin, config.PositionChunkMax, config.Clock)
@@ -15,7 +15,7 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 		// Take chunks that came directly from the user (after being chunkified from the original
 		// packet) and send them to the host.  Chunks being sent on reliable streams are also
 		// tracked and used to determine when to send the next position chunk.
-		case chunk, ok := <-incoming:
+		case chunk, ok := <-fromCore:
 			if !ok {
 				return
 			}
@@ -24,7 +24,7 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 				config.Printf("tried to send a chunk on unknown stream %d", chunk.Stream)
 				break
 			}
-			outgoing <- chunk
+			toHost <- chunk
 			if stream.Mode.Reliable() {
 				pt.Add(chunk)
 				reminder.Update(stream.Id)
@@ -49,7 +49,7 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 			for stream, sequences := range req {
 				for _, sequence := range sequences {
 					if chunk := pt.Get(stream, config.Node, sequence); chunk != nil {
-						outgoing <- *chunk
+						toHost <- *chunk
 					} else {
 						config.Printf("Got a resend chunk for Stream/Sequence %d/%d, but didn't have that chunk.", stream, sequence)
 					}
@@ -84,7 +84,7 @@ func ClientSendChunksHandler(config *Config, incoming, resend, truncate <-chan C
 			}
 			datas := MakePositionChunkDatas(config, p)
 			for _, data := range datas {
-				outgoing <- Chunk{
+				toHost <- Chunk{
 					Stream: StreamPosition,
 					Source: config.Node,
 					Data:   data,
