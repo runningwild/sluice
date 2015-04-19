@@ -127,6 +127,8 @@ type UnreliableUnorderedChunkMerger struct {
 	maxAge  SequenceId
 }
 
+// MakeUnreliableUnorderedChunkMerger returns a ChunkMerger that does not guarantee reliability or
+// ordering.  maxAge is the maximum age of a chunk that it will keep before dropping it.
 func MakeUnreliableUnorderedChunkMerger(maxAge SequenceId) ChunkMerger {
 	if maxAge < 0 {
 		maxAge = 0
@@ -137,6 +139,7 @@ func MakeUnreliableUnorderedChunkMerger(maxAge SequenceId) ChunkMerger {
 		maxAge:  maxAge,
 	}
 }
+
 func (ct *UnreliableUnorderedChunkMerger) AddChunk(chunk Chunk) [][]byte {
 	sequence := chunk.SequenceStart()
 	if sequence < ct.horizon {
@@ -171,6 +174,48 @@ func (ct *UnreliableUnorderedChunkMerger) AddChunk(chunk Chunk) [][]byte {
 	if cs.Done() {
 		ret = append(ret, cs.GetPacket())
 		ct.chunks[sequence] = nil
+	}
+	return ret
+}
+
+type ReliableUnorderedChunkMerger struct {
+	chunks map[SequenceId]*chunkSequencer
+
+	// now is the earliest key in chunks
+	now SequenceId
+}
+
+func MakeReliableUnorderedChunkMerger(start SequenceId) ChunkMerger {
+	return &ReliableUnorderedChunkMerger{
+		chunks: make(map[SequenceId]*chunkSequencer),
+		now:    start,
+	}
+}
+
+func (ct *ReliableUnorderedChunkMerger) AddChunk(chunk Chunk) [][]byte {
+	sequence := chunk.SequenceStart()
+	if sequence < ct.now {
+		// Hopefully this is just a duplicate chunk.
+		return nil
+	}
+	cs, ok := ct.chunks[sequence]
+	if !ok {
+		cs = makeChunkSequencer(sequence)
+		ct.chunks[sequence] = cs
+	}
+	cs.AddChunk(&chunk)
+	var ret [][]byte
+	if cs.Done() {
+		ret = append(ret, cs.GetPacket())
+	}
+	for {
+		cs, ok := ct.chunks[ct.now]
+		if !ok || !cs.Done() {
+			break
+		}
+		newNow := ct.now + SequenceId(cs.numChunks)
+		delete(ct.chunks, ct.now)
+		ct.now = newNow
 	}
 	return ret
 }

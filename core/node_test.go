@@ -70,45 +70,50 @@ func TestWriterRoutine(t *testing.T) {
 }
 
 func TestChunkMergers(t *testing.T) {
-	chunks := []core.Chunk{
-		core.Chunk{
-			Sequence:    3,
-			Subsequence: 1,
-			Data:        []byte("ABC"),
-		},
-		core.Chunk{
-			Sequence:    4,
-			Subsequence: 2,
-			Data:        []byte("D"),
-		},
-		core.Chunk{
-			Sequence:    7,
-			Subsequence: 1,
-			Data:        []byte("abc"),
-		},
-		core.Chunk{
-			Sequence:    8,
-			Subsequence: 2,
-			Data:        []byte("def"),
-		},
-		core.Chunk{
-			Sequence:    9,
-			Subsequence: 3,
-			Data:        []byte("ghk"),
-		},
-		core.Chunk{
-			Sequence:    10,
-			Subsequence: 4,
-			Data:        []byte(""),
-		},
-		core.Chunk{
-			Sequence:    12,
-			Subsequence: 0,
-			Data:        []byte("123"),
-		},
-	}
 	Convey("ChunkMergers work properly.", t, func() {
 		Convey("UnreliableUnorderedChunkMergers work properly", func() {
+			chunks := []core.Chunk{
+				// 3: "ABCD"
+				core.Chunk{
+					Sequence:    3,
+					Subsequence: 1,
+					Data:        []byte("ABC"),
+				},
+				core.Chunk{
+					Sequence:    4,
+					Subsequence: 2,
+					Data:        []byte("D"),
+				},
+
+				// 7: "abcdefghk"
+				core.Chunk{
+					Sequence:    7,
+					Subsequence: 1,
+					Data:        []byte("abc"),
+				},
+				core.Chunk{
+					Sequence:    8,
+					Subsequence: 2,
+					Data:        []byte("def"),
+				},
+				core.Chunk{
+					Sequence:    9,
+					Subsequence: 3,
+					Data:        []byte("ghk"),
+				},
+				core.Chunk{
+					Sequence:    10,
+					Subsequence: 4,
+					Data:        []byte(""),
+				},
+
+				// 12: "123"
+				core.Chunk{
+					Sequence:    12,
+					Subsequence: 0,
+					Data:        []byte("123"),
+				},
+			}
 			Convey("when chunks come in order", func() {
 				ct := core.MakeUnreliableUnorderedChunkMerger(10)
 				packets := ct.AddChunk(chunks[0])
@@ -224,6 +229,269 @@ func TestChunkMergers(t *testing.T) {
 				packets = ct.AddChunk(chunks[5])
 				So(len(packets), ShouldEqual, 0)
 
+			})
+		})
+
+		Convey("ReliableUnorderedChunkMergers work properly", func() {
+			chunks := []core.Chunk{
+				// 3: "ABCDEFGHIJ"
+				core.Chunk{
+					Sequence:    3,
+					Subsequence: 1,
+					Data:        []byte("ABC"),
+				},
+				core.Chunk{
+					Sequence:    4,
+					Subsequence: 2,
+					Data:        []byte("DEF"),
+				},
+				core.Chunk{
+					Sequence:    5,
+					Subsequence: 3,
+					Data:        []byte("GHI"),
+				},
+				core.Chunk{
+					Sequence:    6,
+					Subsequence: 4,
+					Data:        []byte("J"),
+				},
+
+				// 7: "abcdefghk"
+				core.Chunk{
+					Sequence:    7,
+					Subsequence: 1,
+					Data:        []byte("abc"),
+				},
+				core.Chunk{
+					Sequence:    8,
+					Subsequence: 2,
+					Data:        []byte("def"),
+				},
+				core.Chunk{
+					Sequence:    9,
+					Subsequence: 3,
+					Data:        []byte("ghk"),
+				},
+				core.Chunk{
+					Sequence:    10,
+					Subsequence: 4,
+					Data:        []byte(""),
+				},
+
+				// 11: "123"
+				core.Chunk{
+					Sequence:    11,
+					Subsequence: 0,
+					Data:        []byte("123"),
+				},
+
+				// 12: "456"
+				core.Chunk{
+					Sequence:    12,
+					Subsequence: 0,
+					Data:        []byte("456"),
+				},
+
+				// 1000: "FUTURE"
+				core.Chunk{
+					Sequence:    1000,
+					Subsequence: 1,
+					Data:        []byte("FUT"),
+				},
+				core.Chunk{
+					Sequence:    1001,
+					Subsequence: 2,
+					Data:        []byte("URE"),
+				},
+				core.Chunk{
+					Sequence:    1002,
+					Subsequence: 3,
+					Data:        []byte(""),
+				},
+			}
+			Convey("when chunks come in order", func() {
+				ct := core.MakeReliableUnorderedChunkMerger(3)
+				packets := ct.AddChunk(chunks[0])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[1])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[2])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[3])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "ABCDEFGHIJ")
+
+				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[6])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[7])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+
+				packets = ct.AddChunk(chunks[8])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "123")
+
+				packets = ct.AddChunk(chunks[9])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "456")
+			})
+
+			Convey("when chunks come out of order", func() {
+				ct := core.MakeReliableUnorderedChunkMerger(3)
+				packets := ct.AddChunk(chunks[0])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[1])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[2])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[3])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "ABCDEFGHIJ")
+
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[7])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[6])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+
+				packets = ct.AddChunk(chunks[9])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "456")
+
+				packets = ct.AddChunk(chunks[8])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "123")
+			})
+
+			Convey("when packets come out of order", func() {
+				ct := core.MakeReliableUnorderedChunkMerger(3)
+
+				packets := ct.AddChunk(chunks[9])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "456")
+
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[7])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[6])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+
+				packets = ct.AddChunk(chunks[0])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[1])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[2])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[3])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "ABCDEFGHIJ")
+
+				packets = ct.AddChunk(chunks[8])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "123")
+			})
+
+			Convey("when duplicate chunks show up", func() {
+				ct := core.MakeReliableUnorderedChunkMerger(3)
+				packets := ct.AddChunk(chunks[0])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[1])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[2])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[3])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "ABCDEFGHIJ")
+
+				// Resend every chunk in that packet, shouldn't get anything back.
+				packets = ct.AddChunk(chunks[0])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[1])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[2])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[3])
+				So(len(packets), ShouldEqual, 0)
+
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[7])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[6])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+				packets = ct.AddChunk(chunks[6])
+				So(len(packets), ShouldEqual, 0)
+
+				packets = ct.AddChunk(chunks[8])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "123")
+				packets = ct.AddChunk(chunks[8])
+				So(len(packets), ShouldEqual, 0)
+
+				packets = ct.AddChunk(chunks[9])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "456")
+				packets = ct.AddChunk(chunks[9])
+				So(len(packets), ShouldEqual, 0)
+			})
+
+			Convey("when old chunks show up", func() {
+				ct := core.MakeReliableUnorderedChunkMerger(3)
+				packets := ct.AddChunk(chunks[10])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[11])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[12])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "FUTURE")
+
+				// Now send some super-old packets that we haven't gotten yet.
+				packets = ct.AddChunk(chunks[0])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[1])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[2])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[3])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "ABCDEFGHIJ")
+
+				packets = ct.AddChunk(chunks[4])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[5])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[6])
+				So(len(packets), ShouldEqual, 0)
+				packets = ct.AddChunk(chunks[7])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "abcdefghk")
+
+				packets = ct.AddChunk(chunks[8])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "123")
+
+				packets = ct.AddChunk(chunks[9])
+				So(len(packets), ShouldEqual, 1)
+				So(string(packets[0]), ShouldEqual, "456")
 			})
 		})
 	})
