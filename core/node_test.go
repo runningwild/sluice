@@ -1,6 +1,9 @@
 package core_test
 
 import (
+	"github.com/runningwild/cmwc"
+	"math/rand"
+
 	"github.com/runningwild/sluice/core"
 	. "github.com/smartystreets/goconvey/convey"
 	"testing"
@@ -495,4 +498,115 @@ func TestChunkMergers(t *testing.T) {
 			})
 		})
 	})
+}
+
+var smallPackets []core.Chunk
+var largePackets []core.Chunk
+
+func init() {
+	smallPackets = []core.Chunk{
+		core.Chunk{
+			Subsequence: 1,
+			Data:        []byte("..."),
+		},
+		core.Chunk{
+			Subsequence: 2,
+			Data:        []byte("..."),
+		},
+		core.Chunk{
+			Subsequence: 3,
+			Data:        []byte{},
+		},
+	}
+	for i := 0; i < 100; i++ {
+		largePackets = append(largePackets, core.Chunk{
+			Subsequence: core.SubsequenceIndex(i + 1),
+			Data:        []byte("..."),
+		})
+	}
+	largePackets[99].Data = nil
+}
+
+func BenchmarkUnreliableUnorderedChunkMergerWithInOrderChunks(b *testing.B) {
+	b.StopTimer()
+	chunks := make([]core.Chunk, b.N)
+	for i := range chunks {
+		chunks[i] = smallPackets[i%len(smallPackets)]
+		chunks[i].Sequence = core.SequenceId(i)
+	}
+	ct := core.MakeUnreliableUnorderedChunkMerger(10)
+	b.StartTimer()
+	for i := range chunks {
+		ct.AddChunk(chunks[i])
+	}
+}
+
+func BenchmarkReliableUnorderedChunkMergerWithInOrderChunks(b *testing.B) {
+	b.StopTimer()
+	chunks := make([]core.Chunk, b.N)
+	for i := range chunks {
+		chunks[i] = smallPackets[i%len(smallPackets)]
+		chunks[i].Sequence = core.SequenceId(i)
+	}
+	ct := core.MakeReliableUnorderedChunkMerger(0)
+	b.StartTimer()
+	for i := range chunks {
+		ct.AddChunk(chunks[i])
+	}
+}
+
+func BenchmarkUnreliableUnorderedChunkMergerWithOutOfOrderChunks(b *testing.B) {
+	b.StopTimer()
+	chunks := make([]core.Chunk, b.N)
+	for i := range chunks {
+		chunks[i] = largePackets[i%len(largePackets)]
+		chunks[i].Sequence = core.SequenceId(i)
+	}
+	c := cmwc.MakeGoodCmwc()
+	c.Seed(123)
+	rng := rand.New(c)
+	// Shuffle blocks of 1000 at a time
+	for i := 0; i < len(chunks); i += 1000 {
+		max := len(chunks)
+		if max > 1000 {
+			max = 1000
+		}
+		for j := 0; j < max; j++ {
+			swap := rng.Intn(max-j) + j
+			chunks[j], chunks[swap] = chunks[swap], chunks[j]
+		}
+	}
+	ct := core.MakeUnreliableUnorderedChunkMerger(10)
+	b.StartTimer()
+	for i := range chunks {
+		ct.AddChunk(chunks[i])
+	}
+}
+
+func BenchmarkReliableUnorderedChunkMergerWithOutOfOrderChunks(b *testing.B) {
+	b.StopTimer()
+	chunks := make([]core.Chunk, b.N)
+	for i := range chunks {
+		chunks[i] = largePackets[i%len(largePackets)]
+		chunks[i].Sequence = core.SequenceId(i)
+	}
+	c := cmwc.MakeGoodCmwc()
+	c.Seed(123)
+	rng := rand.New(c)
+	// Shuffle blocks of 1000 at a time
+	for i := 0; i < len(chunks); i += 1000 {
+		max := len(chunks)
+		if max > 1000 {
+			max = 1000
+		}
+		for j := 0; j < max; j++ {
+			swap := rng.Intn(max-j) + j
+			chunks[j], chunks[swap] = chunks[swap], chunks[j]
+		}
+	}
+	ct := core.MakeReliableUnorderedChunkMerger(10)
+	b.StartTimer()
+	for i := range chunks {
+		ct.AddChunk(chunks[i])
+	}
 }
