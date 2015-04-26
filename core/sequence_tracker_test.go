@@ -73,16 +73,35 @@ func SequenceTrackerTest(t *testing.T) {
 		}
 		So(st.StreamId(), ShouldEqual, core.StreamId(2345))
 		checkSequenceTracker(st, 9, sids)
-		Convey("Serialize() followed by Deserialize() is a NOP.", func() {
-			var data []byte
-			data = core.AppendSequenceTracker(data, st)
-			var st2 core.SequenceTracker
-			var err error
-			data, err = core.ConsumeSequenceTracker(data, &st2)
-			So(len(data), ShouldEqual, 0)
-			So(err, ShouldBeNil)
-			So(st2.StreamId(), ShouldEqual, core.StreamId(2345))
-			checkSequenceTracker(&st2, 9, sids)
+		Convey("and chunkification/dechunkification works", func() {
+			var config core.Config
+			config.MaxChunkDataSize = 10
+			datas := core.MakeSequenceTrackerChunkDatas(&config, st)
+			So(len(datas), ShouldBeGreaterThan, 1)
+			var sts []*core.SequenceTracker
+			for _, data := range datas {
+				st, err := core.ParseSequenceTrackerChunkData(data)
+				So(err, ShouldBeNil)
+				sts = append(sts, st)
+			}
+
+			// All trackers should agree on ContainsAllUpTo
+			So(st.ContainsAllUpTo(10), ShouldBeTrue)
+			So(st.ContainsAllUpTo(11), ShouldBeFalse)
+			for i := range sts {
+				So(sts[i].ContainsAllUpTo(10), ShouldBeTrue)
+				So(sts[i].ContainsAllUpTo(11), ShouldBeFalse)
+			}
+
+			// For each scattered sequence id, at least one tracker should have it.  For sequences
+			// not contained in the set, none should have it.
+			for sequence, has := range sids {
+				found := false
+				for _, st := range sts {
+					found = found || st.Contains(sequence)
+				}
+				So(found, ShouldEqual, has)
+			}
 		})
 	})
 
@@ -93,13 +112,7 @@ func SequenceTrackerTest(t *testing.T) {
 		st.AddSequenceId(10)
 		st.AddSequenceId(11) // Should compact up to 11
 		st.AddSequenceId(13) // Should compact up to 15
-		var data []byte
-		data = core.AppendSequenceTracker(data, st)
-
-		// streamid + len + sequence id == 2 + 2 + 2 + 4 == 10
-		So(len(data), ShouldEqual, 10)
-
-		checkSequenceTracker(st, 15, map[core.SequenceId]bool{
+		sids := map[core.SequenceId]bool{
 			10: true,
 			11: true,
 			12: true,
@@ -109,6 +122,38 @@ func SequenceTrackerTest(t *testing.T) {
 			16: false,
 			17: false,
 			18: false,
+		}
+		checkSequenceTracker(st, 15, sids)
+
+		Convey("and chunkification/dechunkification works", func() {
+			var config core.Config
+			config.MaxChunkDataSize = 10
+			datas := core.MakeSequenceTrackerChunkDatas(&config, st)
+			So(len(datas), ShouldBeGreaterThan, 1)
+			var sts []*core.SequenceTracker
+			for _, data := range datas {
+				st, err := core.ParseSequenceTrackerChunkData(data)
+				So(err, ShouldBeNil)
+				sts = append(sts, st)
+			}
+
+			// All trackers should agree on ContainsAllUpTo
+			So(st.ContainsAllUpTo(10), ShouldBeTrue)
+			So(st.ContainsAllUpTo(11), ShouldBeFalse)
+			for i := range sts {
+				So(sts[i].ContainsAllUpTo(10), ShouldBeTrue)
+				So(sts[i].ContainsAllUpTo(11), ShouldBeFalse)
+			}
+
+			// For each scattered sequence id, at least one tracker should have it.  For sequences
+			// not contained in the set, none should have it.
+			for sequence, has := range sids {
+				found := false
+				for _, st := range sts {
+					found = found || st.Contains(sequence)
+				}
+				So(found, ShouldEqual, has)
+			}
 		})
 	})
 }

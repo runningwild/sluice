@@ -75,36 +75,50 @@ func (st *SequenceTracker) String() string {
 
 // Returns a []byte in the following format:
 // <16:stream id><16:node id><16:num ids><16:max contiguous>[for each other id: <16:id>]
-func AppendSequenceTracker(data []byte, st *SequenceTracker) []byte {
-	data = AppendStreamId(data, st.stream)
-	data = AppendNodeId(data, st.node)
-	data = AppendUint16(data, uint16(len(st.others)+1))
-	data = AppendSequenceId(data, st.maxContiguous)
+func MakeSequenceTrackerChunkDatas(config *Config, st *SequenceTracker) [][]byte {
+	var ret [][]byte
+	var current []byte
+
+	current = AppendStreamId(current, st.stream)
+	current = AppendNodeId(current, st.node)
+	current = AppendSequenceId(current, st.maxContiguous)
+
 	for sequence := range st.others {
-		data = AppendSequenceId(data, sequence)
+		if len(current) >= config.MaxChunkDataSize-4 {
+			ret = append(ret, current)
+			current = AppendStreamId(nil, st.stream)
+			current = AppendNodeId(current, st.node)
+			current = AppendSequenceId(current, st.maxContiguous)
+		}
+		current = AppendSequenceId(current, sequence)
 	}
-	return data
+
+	if len(current) > 0 {
+		ret = append(ret, current)
+	}
+	return ret
 }
 
-// DeserializeSequenceTracker creates a SequenceTracker from data and returns the number of bytes
-// read and the sequence tracker.
-func ConsumeSequenceTracker(data []byte, st *SequenceTracker) ([]byte, error) {
-	if len(data) < 8 {
-		return data, fmt.Errorf("Invalid data stream.")
+// ParseSequenceTrackerChunkData parses sequence tracker chunks into sequence trackers.
+func ParseSequenceTrackerChunkData(data []byte) (st *SequenceTracker, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			st = nil
+			err = fmt.Errorf("unexpected parse error while parsing chunk data: %q", r)
+		}
+	}()
+
+	st = &SequenceTracker{
+		others: make(map[SequenceId]bool),
 	}
 	data = ConsumeStreamId(data, &st.stream)
 	data = ConsumeNodeId(data, &st.node)
-	var numIds uint16
-	data = ConsumeUint16(data, &numIds)
-	if len(data) < int(4*numIds) {
-		return data, fmt.Errorf("Invalid data stream.")
-	}
 	data = ConsumeSequenceId(data, &st.maxContiguous)
-	st.others = make(map[SequenceId]bool, numIds-1)
-	for ; numIds > 1; numIds-- {
-		var sequence SequenceId
-		data = ConsumeSequenceId(data, &sequence)
-		st.others[sequence] = true
+	for len(data) > 0 {
+		var seq SequenceId
+		data = ConsumeSequenceId(data, &seq)
+		st.others[seq] = true
 	}
-	return data, nil
+
+	return
 }
