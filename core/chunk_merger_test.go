@@ -216,7 +216,7 @@ func TestChunkMergers(t *testing.T) {
 				},
 			}
 			Convey("when chunks come in order", func() {
-				cm := core.MakeUnreliableOrderedChunkMerger(3, 100)
+				cm := core.MakeUnreliableOrderedChunkMerger(100)
 				packets := cm.AddChunk(chunks[0])
 				So(len(packets), ShouldEqual, 0)
 				packets = cm.AddChunk(chunks[1])
@@ -239,7 +239,7 @@ func TestChunkMergers(t *testing.T) {
 			})
 
 			Convey("when chunks come out of order", func() {
-				cm := core.MakeUnreliableOrderedChunkMerger(3, 100)
+				cm := core.MakeUnreliableOrderedChunkMerger(100)
 				packets := cm.AddChunk(chunks[1])
 				So(len(packets), ShouldEqual, 0)
 				packets = cm.AddChunk(chunks[0])
@@ -262,7 +262,7 @@ func TestChunkMergers(t *testing.T) {
 			})
 
 			Convey("when packets come out of order", func() {
-				cm := core.MakeUnreliableOrderedChunkMerger(3, 100)
+				cm := core.MakeUnreliableOrderedChunkMerger(100)
 				packets := cm.AddChunk(chunks[1])
 				So(len(packets), ShouldEqual, 0)
 
@@ -286,7 +286,7 @@ func TestChunkMergers(t *testing.T) {
 			})
 
 			Convey("when duplicate chunks show up", func() {
-				cm := core.MakeUnreliableOrderedChunkMerger(3, 100)
+				cm := core.MakeUnreliableOrderedChunkMerger(100)
 				packets := cm.AddChunk(chunks[0])
 				So(len(packets), ShouldEqual, 0)
 				packets = cm.AddChunk(chunks[1])
@@ -333,7 +333,7 @@ func TestChunkMergers(t *testing.T) {
 			})
 
 			Convey("when old chunks show up", func() {
-				cm := core.MakeUnreliableOrderedChunkMerger(3, 3)
+				cm := core.MakeUnreliableOrderedChunkMerger(3)
 				packets := cm.AddChunk(chunks[0])
 				So(len(packets), ShouldEqual, 0)
 
@@ -938,7 +938,7 @@ func BenchmarkReliableUnorderedChunkMergerWithInOrderChunks(b *testing.B) {
 }
 
 func BenchmarkUnreliableOrderedChunkMergerWithInOrderChunks(b *testing.B) {
-	benchmarkChunkMergerWithInOrderChunks(b, core.MakeUnreliableOrderedChunkMerger(0, 10))
+	benchmarkChunkMergerWithInOrderChunks(b, core.MakeUnreliableOrderedChunkMerger(10))
 }
 
 func BenchmarkReliableOrderedChunkMergerWithInOrderChunks(b *testing.B) {
@@ -981,7 +981,7 @@ func BenchmarkReliableUnorderedChunkMergerWithOutOfOrderChunks(b *testing.B) {
 }
 
 func BenchmarkUnreliableOrderedChunkMergerWithOutOfOrderChunks(b *testing.B) {
-	benchmarkChunkMergerWithOutOfOrderChunks(b, core.MakeUnreliableOrderedChunkMerger(0, 10))
+	benchmarkChunkMergerWithOutOfOrderChunks(b, core.MakeUnreliableOrderedChunkMerger(10))
 }
 
 func BenchmarkReliableOrderedChunkMergerWithOutOfOrderChunks(b *testing.B) {

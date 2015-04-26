@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"fmt"
 	"github.com/runningwild/sluice/core"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -34,6 +35,79 @@ func verifySimpleChunk(chunk *core.Chunk) bool {
 	data = core.ConsumeNodeId(data, &node)
 	data = core.ConsumeSequenceId(data, &sequence)
 	return chunk.Stream == stream && chunk.Source == node && chunk.Sequence == sequence
+}
+
+// makeChunks returns several chunks with data fields that can be verified later with verifyPacket.
+// The config is necessary because the non-terminal chunks need to be filled with the maximum
+// number of bytes allowed per chunk.
+func makeChunks(config *core.Config, stream core.StreamId, node core.NodeId, start core.SequenceId, count int) []core.Chunk {
+	chunks := make([]core.Chunk, count)
+	for i := range chunks {
+		chunks[i] = core.Chunk{
+			Stream:      stream,
+			Source:      node,
+			Sequence:    start + core.SequenceId(i),
+			Subsequence: core.SubsequenceIndex(i + 1),
+		}
+		data := core.AppendStreamId(nil, stream)
+		data = core.AppendNodeId(data, node)
+		data = core.AppendSequenceId(data, chunks[i].Sequence)
+		data = core.AppendSubsequenceIndex(data, chunks[i].Subsequence)
+		data = append(data, make([]byte, config.MaxChunkDataSize-len(data))...)
+		data[len(data)-1] = 1
+		chunks[i].Data = data
+	}
+	data := chunks[len(chunks)-1].Data
+	data = data[0 : len(data)-1]
+	data[len(data)-1] = 1
+	chunks[len(chunks)-1].Data = data
+	return chunks
+}
+
+// verifyPacket verifies the resulting packet formed from merging chunks from makeChunks.
+func verifyPacket(data []byte, stream core.StreamId, node core.NodeId, start core.SequenceId, count int) (valid bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Panic in verifyPacket: %v\n", r)
+			valid = false
+		}
+	}()
+	valid = true
+	for i := 0; i < count; i++ {
+		var pStream core.StreamId
+		var pNode core.NodeId
+		var pSequence core.SequenceId
+		var pSubsequence core.SubsequenceIndex
+		data = core.ConsumeStreamId(data, &pStream)
+		data = core.ConsumeNodeId(data, &pNode)
+		data = core.ConsumeSequenceId(data, &pSequence)
+		data = core.ConsumeSubsequenceIndex(data, &pSubsequence)
+		if pStream != stream || pNode != node || pSequence != start+core.SequenceId(i) || pSubsequence != core.SubsequenceIndex(i+1) {
+			return false
+		}
+		for data[0] == 0 {
+			data = data[1:]
+		}
+		if data[0] != 1 {
+			return false
+		}
+		data = data[1:]
+	}
+	return
+}
+
+func TestVerifiablePackets(t *testing.T) {
+	Convey("Our own testing routines work", t, func() {
+		var config core.Config
+		config.MaxChunkDataSize = 40
+		chunks := makeChunks(&config, 12, 155, 33, 10)
+		So(len(chunks), ShouldEqual, 10)
+		var packet []byte
+		for _, chunk := range chunks {
+			packet = append(packet, chunk.Data...)
+		}
+		So(verifyPacket(packet, 12, 155, 33, 10), ShouldBeTrue)
+	})
 }
 
 func TestPacketTracker(t *testing.T) {

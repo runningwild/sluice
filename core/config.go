@@ -16,6 +16,14 @@ type NodeId uint16
 // low-level data that sluice needs to send.
 type StreamId uint16
 
+// Streamlet is a ndoe-specific stream.  In the case of broadcast streams there can be one streamlet
+// per node in the network.  In the case of non-broadcast streams the host sees one streamlet for
+// every other node in the network, and all clients see only one streamlet.
+type Streamlet struct {
+	stream StreamId
+	node   NodeId
+}
+
 // SequenceId is used to order chunks within a stream.  Even unordered and unreliable streams use
 // SequenceIds, they are necessary for reassembling chunked packets.  The SequenceId of streams
 // starts at 1 and is incremented for each chunk.
@@ -61,9 +69,6 @@ func (m Mode) Reliable() bool {
 }
 func (m Mode) Ordered() bool {
 	return m == ModeUnreliableOrdered || m == ModeReliableOrdered
-}
-func (m Mode) Deduped() bool {
-	return m != ModeUnreliableUnordered
 }
 
 const (
@@ -121,12 +126,20 @@ type StreamConfig struct {
 	Broadcast bool
 }
 
+func (sc *StreamConfig) IsReserved() bool {
+	return sc.Id > StreamMaxUserDefined
+}
+
 // Config contains information for how to run the sluice network.
 type Config struct {
 	GlobalConfig
 
 	// NodeId of the client with this config.
 	Node NodeId
+
+	// Starts maps from Streamlet of a reliable stream to the first sequence id that this node should
+	// receive on that streamlet.
+	Starts map[Streamlet]SequenceId
 
 	Logger Printer
 }
@@ -143,6 +156,12 @@ type GlobalConfig struct {
 	// Min and max amount of time a client will wait between sending position chunks.
 	PositionChunkMin time.Duration
 	PositionChunkMax time.Duration
+
+	// Maximum number of sequence ids that will be kept around before the chunks of an unreliable
+	// packet are dropped.
+	MaxUnreliableAge SequenceId
+
+	Confirmation time.Duration
 }
 
 type Printer interface {

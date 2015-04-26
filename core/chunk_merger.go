@@ -213,10 +213,10 @@ type unreliableOrderedMerger struct {
 
 // MakeUnreliableOrderedChunkMerger returns a ChunkMerger that does not guarantee reliability, but
 // does guarantee that packets will be delivered in chronological order.
-func MakeUnreliableOrderedChunkMerger(start, maxAge SequenceId) ChunkMerger {
+func MakeUnreliableOrderedChunkMerger(maxAge SequenceId) ChunkMerger {
 	return &unreliableOrderedMerger{
 		rm:  makeUnreliableChunkMerger(maxAge),
-		now: start,
+		now: 0,
 	}
 }
 
