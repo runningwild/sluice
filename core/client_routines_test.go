@@ -395,6 +395,7 @@ func TestClientRecvChunks(t *testing.T) {
 					},
 				},
 				MaxChunkDataSize: 50,
+				MaxUnreliableAge: 25,
 				Confirmation:     10 * time.Millisecond,
 				Clock:            &clock.RealClock{},
 			},
@@ -437,13 +438,133 @@ func TestClientRecvChunks(t *testing.T) {
 					fromHost <- chunk
 				}
 			}()
-			var packets []core.Packet
-			for i := 0; i < 3; i++ {
-				packets = append(packets, <-toCore)
-			}
-			So(verifyPacket(packets[0].Data, config.GetIdFromName("RO"), 10, 0, 5), ShouldBeTrue)
-			So(verifyPacket(packets[1].Data, config.GetIdFromName("RO"), 11, 0, 5), ShouldBeTrue)
-			So(verifyPacket(packets[2].Data, config.GetIdFromName("RO"), 10, 5, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, config.GetIdFromName("RO"), 10, 0, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, config.GetIdFromName("RO"), 11, 0, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, config.GetIdFromName("RO"), 10, 5, 5), ShouldBeTrue)
+		})
+
+		Convey("Unreliable and Unordered streams might drop packets, and might deliver them out of order.", func() {
+			go func() {
+				// This is just to make sure the routine doesn't block trying to send to the host.
+				for range toHost {
+				}
+			}()
+			var node core.NodeId = 10
+			stream := config.GetIdFromName("UU")
+			go func() {
+				var chunks []core.Chunk
+				// Send all but the first chunk for each packet.  Note that the last packet is more
+				// than MaxAge in the future from the first packet.
+				chunkSets := [][]core.Chunk{
+					makeChunks(config, stream, node, 0, 5),
+					makeChunks(config, stream, node, 5, 5),
+					makeChunks(config, stream, node, 10, 5),
+					makeChunks(config, stream, node, 15, 5),
+					makeChunks(config, stream, node, 30, 5),
+				}
+				for _, chunkSet := range chunkSets {
+					chunks = append(chunks, chunkSet[0])
+					for j := 1; j < len(chunkSet); j++ {
+						fromHost <- chunkSet[j]
+					}
+				}
+				// Finish the packets in this order: 1,2,0,4,3.  We should receive, in order, 1,2,4,3
+				for _, index := range []int{1, 2, 0, 4, 3} {
+					fromHost <- chunks[index]
+				}
+			}()
+			So(verifyPacket((<-toCore).Data, stream, node, 5, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 10, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 30, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 15, 5), ShouldBeTrue)
+		})
+
+		Convey("Unreliable and Ordered streams might drop packets, but all packets that are received are in order.", func() {
+			go func() {
+				// This is just to make sure the routine doesn't block trying to send to the host.
+				for range toHost {
+				}
+			}()
+			var node core.NodeId = 10
+			stream := config.GetIdFromName("UO")
+			go func() {
+				var chunks []core.Chunk
+				// Send all but the first chunk for each packet
+				chunkSets := [][]core.Chunk{
+					makeChunks(config, stream, node, 0, 5),
+					makeChunks(config, stream, node, 5, 5),
+					makeChunks(config, stream, node, 10, 5),
+					makeChunks(config, stream, node, 15, 5),
+					makeChunks(config, stream, node, 20, 5),
+				}
+				for _, chunkSet := range chunkSets {
+					chunks = append(chunks, chunkSet[0])
+					for j := 1; j < len(chunkSet); j++ {
+						fromHost <- chunkSet[j]
+					}
+				}
+				// Finish the packets in this order: 1,2,0,4,3.  We should receive, in order, 1,2,4.
+				for _, index := range []int{1, 2, 0, 4, 3} {
+					fromHost <- chunks[index]
+				}
+			}()
+			So(verifyPacket((<-toCore).Data, stream, node, 5, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 10, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 20, 5), ShouldBeTrue)
+		})
+
+		Convey("Reliable and Unordered streams produce all packets, but can produce them out of order.", func() {
+			go func() {
+				// This is just to make sure the routine doesn't block trying to send to the host.
+				for range toHost {
+				}
+			}()
+			var node core.NodeId = 10
+			stream := config.GetIdFromName("RU")
+			go func() {
+				var chunks []core.Chunk
+				chunks = append(chunks, makeChunks(config, stream, node, 0, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 5, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 10, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 15, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 20, 5)...)
+				// Send them in reverse order
+				for i := range chunks {
+					fromHost <- chunks[len(chunks)-1-i]
+				}
+			}()
+			So(verifyPacket((<-toCore).Data, stream, node, 20, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 15, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 10, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 5, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 0, 5), ShouldBeTrue)
+		})
+
+		Convey("Reliable and Ordered streams produce all packets in order.", func() {
+			go func() {
+				// This is just to make sure the routine doesn't block trying to send to the host.
+				for range toHost {
+				}
+			}()
+			var node core.NodeId = 10
+			stream := config.GetIdFromName("RO")
+			go func() {
+				var chunks []core.Chunk
+				chunks = append(chunks, makeChunks(config, stream, node, 0, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 5, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 10, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 15, 5)...)
+				chunks = append(chunks, makeChunks(config, stream, node, 20, 5)...)
+				// Send them in reverse order
+				for i := range chunks {
+					fromHost <- chunks[len(chunks)-1-i]
+				}
+			}()
+			So(verifyPacket((<-toCore).Data, stream, node, 0, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 5, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 10, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 15, 5), ShouldBeTrue)
+			So(verifyPacket((<-toCore).Data, stream, node, 20, 5), ShouldBeTrue)
 		})
 
 		// Convey("After it gets a bunch of chunks on reliable streams.", func() {
