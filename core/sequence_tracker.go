@@ -60,9 +60,10 @@ func (st *SequenceTracker) Contains(id SequenceId) bool {
 	return st.others[id]
 }
 
-// ContainsAllUpTo returns true iff this tracker has tracked all ids up to and including id.
-func (st *SequenceTracker) ContainsAllUpTo(id SequenceId) bool {
-	return id <= st.maxContiguous
+// MaxContiguousSequence returns the SequenceId for which it and all previous SequenceIds are
+// contained in this tracker.
+func (st *SequenceTracker) MaxContiguousSequence() SequenceId {
+	return st.maxContiguous
 }
 
 func (st *SequenceTracker) String() string {
@@ -73,8 +74,8 @@ func (st *SequenceTracker) String() string {
 	return ret
 }
 
-// Returns a []byte in the following format:
-// <16:stream id><16:node id><16:num ids><16:max contiguous>[for each other id: <16:id>]
+// MakeSequenceTrackerChunkDatas returns one or more data segments that contain all of the
+// information contained in a single SequenceTracker.  The datas can be interpreted individually.
 func MakeSequenceTrackerChunkDatas(config *Config, st *SequenceTracker) [][]byte {
 	var ret [][]byte
 	var current []byte

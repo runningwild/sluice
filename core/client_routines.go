@@ -99,7 +99,7 @@ func ClientSendChunksHandler(config *Config, fromCore, reserved <-chan Chunk, to
 }
 
 func makeMerger(config *Config, mode Mode, sl Streamlet) ChunkMerger {
-	switch config.Streams[sl.stream].Mode {
+	switch config.Streams[sl.Stream].Mode {
 	case ModeUnreliableUnordered:
 		return MakeUnreliableUnorderedChunkMerger(config.MaxUnreliableAge)
 	case ModeUnreliableOrdered:
@@ -109,7 +109,7 @@ func makeMerger(config *Config, mode Mode, sl Streamlet) ChunkMerger {
 	case ModeReliableOrdered:
 		return MakeReliableOrderedChunkMerger(config.Starts[sl])
 	default:
-		panic(fmt.Sprintf("unknown mode %v for stream %v", config.Streams[sl.stream].Mode, sl.stream))
+		panic(fmt.Sprintf("unknown mode %v for stream %v", config.Streams[sl.Stream].Mode, sl.Stream))
 	}
 }
 
@@ -126,6 +126,9 @@ func ClientRecvChunksHandler(config *Config, fromHost <-chan Chunk, toCore chan<
 	mergers := make(map[Streamlet]ChunkMerger)
 	ticker := config.Clock.Tick(config.Confirmation)
 	trackers := make(map[Streamlet]*SequenceTracker)
+	for sl, start := range config.Starts {
+		trackers[sl] = MakeSequenceTracker(sl.Stream, sl.Node, start)
+	}
 	for {
 		select {
 		case chunk, ok := <-fromHost:
@@ -152,6 +155,14 @@ func ClientRecvChunksHandler(config *Config, fromHost <-chan Chunk, toCore chan<
 					Stream: stream.Id,
 					Source: chunk.Source,
 					Data:   packetData,
+				}
+			}
+			if stream.Mode.Reliable() {
+				tracker, ok := trackers[sl]
+				if !ok {
+					config.Printf("No tracker exists for %v\n", sl)
+				} else {
+					tracker.AddSequenceId(chunk.Sequence)
 				}
 			}
 

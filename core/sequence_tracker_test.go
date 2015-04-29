@@ -7,25 +7,12 @@ import (
 	"testing"
 )
 
-func checkSequenceTracker(st *core.SequenceTracker, max core.SequenceId, sids map[core.SequenceId]bool) bool {
-	good := true
-	containedUpToMax := st.ContainsAllUpTo(max)
-	So(containedUpToMax, ShouldBeTrue)
-	if !containedUpToMax {
-		good = false
-	}
-	doesntContainNext := st.ContainsAllUpTo(max + 1)
-	So(doesntContainNext, ShouldBeFalse)
-	if !doesntContainNext {
-		good = false
-	}
+func verifySequenceTracker(st *core.SequenceTracker, max core.SequenceId, sids map[core.SequenceId]bool) {
+	So(max, ShouldEqual, st.MaxContiguousSequence())
+	So(st.Contains(max+1), ShouldBeFalse)
 	for sid, present := range sids {
 		So(st.Contains(sid), ShouldEqual, present)
-		if st.Contains(sid) != present {
-			good = false
-		}
 	}
-	return good
 }
 
 func SequenceTrackerTest(t *testing.T) {
@@ -72,7 +59,7 @@ func SequenceTrackerTest(t *testing.T) {
 			24: false,
 		}
 		So(st.StreamId(), ShouldEqual, core.StreamId(2345))
-		checkSequenceTracker(st, 9, sids)
+		verifySequenceTracker(st, 9, sids)
 		Convey("and chunkification/dechunkification works", func() {
 			var config core.Config
 			config.MaxChunkDataSize = 10
@@ -85,12 +72,10 @@ func SequenceTrackerTest(t *testing.T) {
 				sts = append(sts, st)
 			}
 
-			// All trackers should agree on ContainsAllUpTo
-			So(st.ContainsAllUpTo(10), ShouldBeTrue)
-			So(st.ContainsAllUpTo(11), ShouldBeFalse)
+			// All trackers should agree on MaxContiguousSequence.
+			So(st.MaxContiguousSequence(), ShouldEqual, 10)
 			for i := range sts {
-				So(sts[i].ContainsAllUpTo(10), ShouldBeTrue)
-				So(sts[i].ContainsAllUpTo(11), ShouldBeFalse)
+				So(sts[i].MaxContiguousSequence(), ShouldEqual, 10)
 			}
 
 			// For each scattered sequence id, at least one tracker should have it.  For sequences
@@ -123,7 +108,7 @@ func SequenceTrackerTest(t *testing.T) {
 			17: false,
 			18: false,
 		}
-		checkSequenceTracker(st, 15, sids)
+		verifySequenceTracker(st, 15, sids)
 
 		Convey("and chunkification/dechunkification works", func() {
 			var config core.Config
@@ -137,12 +122,10 @@ func SequenceTrackerTest(t *testing.T) {
 				sts = append(sts, st)
 			}
 
-			// All trackers should agree on ContainsAllUpTo
-			So(st.ContainsAllUpTo(10), ShouldBeTrue)
-			So(st.ContainsAllUpTo(11), ShouldBeFalse)
+			// All trackers should agree on MaxContiguousSequence.
+			So(st.MaxContiguousSequence(), ShouldEqual, 10)
 			for i := range sts {
-				So(sts[i].ContainsAllUpTo(10), ShouldBeTrue)
-				So(sts[i].ContainsAllUpTo(11), ShouldBeFalse)
+				So(sts[i].MaxContiguousSequence(), ShouldEqual, 10)
 			}
 
 			// For each scattered sequence id, at least one tracker should have it.  For sequences

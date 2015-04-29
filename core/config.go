@@ -20,8 +20,8 @@ type StreamId uint16
 // per node in the network.  In the case of non-broadcast streams the host sees one streamlet for
 // every other node in the network, and all clients see only one streamlet.
 type Streamlet struct {
-	stream StreamId
-	node   NodeId
+	Stream StreamId
+	Node   NodeId
 }
 
 // SequenceId is used to order chunks within a stream.  Even unordered and unreliable streams use
