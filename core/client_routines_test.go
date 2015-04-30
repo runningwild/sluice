@@ -369,10 +369,6 @@ func TestClientSendChunks(t *testing.T) {
 }
 
 func TestClientRecvChunks(t *testing.T) {
-	go func() {
-		time.Sleep(time.Second * 2)
-		panic("D")
-	}()
 	Convey("ClientRecvChunksHandler", t, func() {
 		config := &core.Config{
 			Node:   5,
@@ -437,7 +433,7 @@ func TestClientRecvChunks(t *testing.T) {
 
 		// TODO: Must check that we don't get packets from before config.Starts.
 
-		Convey("Chunks from fromHost get assembled into packets and sent to toCore.", func() {
+		Convey("Unreserved chunks from fromHost get assembled into packets and sent to toCore.", func() {
 			go func() {
 				// This is just to make sure the routine doesn't block trying to send to the host.
 				for range toHost {
@@ -455,6 +451,29 @@ func TestClientRecvChunks(t *testing.T) {
 			So(verifyPacket((<-toCore).Data, config.GetIdFromName("RO"), 777, 5, 5), ShouldBeTrue)
 			So(verifyPacket((<-toCore).Data, config.GetIdFromName("RO"), 778, 25, 5), ShouldBeTrue)
 			So(verifyPacket((<-toCore).Data, config.GetIdFromName("RO"), 777, 10, 5), ShouldBeTrue)
+		})
+
+		Convey("Reserved chunks from fromHost get sent directly through the reserved channel.", func() {
+			go func() {
+				// This is just to make sure the routine doesn't block trying to send to the host.
+				for range toHost {
+				}
+			}()
+			go func() {
+				fromHost <- makeSimpleChunk(core.StreamTruncate, 1, 10)
+				fromHost <- makeSimpleChunk(core.StreamPing, 1, 11)
+				fromHost <- makeSimpleChunk(core.StreamDing, 1, 100)
+				fromHost <- makeSimpleChunk(core.StreamResend, 1, 20)
+			}()
+			for i := 0; i < 4; i++ {
+				chunk := <-reserved
+				So(verifySimpleChunk(&chunk), ShouldBeTrue)
+			}
+			select {
+			case <-toCore:
+				panic("Should not have gotten anything from <-toCore")
+			default:
+			}
 		})
 
 		Convey("Unreliable and Unordered streams might drop packets, and might deliver them out of order.", func() {

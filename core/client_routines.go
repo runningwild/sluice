@@ -135,13 +135,13 @@ func ClientRecvChunksHandler(config *Config, fromHost <-chan Chunk, toCore chan<
 			if !ok {
 				return
 			}
+			if chunk.Stream.IsReserved() {
+				reserved <- chunk
+				break
+			}
 			stream := config.GetStreamConfigById(chunk.Stream)
 			if stream == nil {
 				config.Printf("Got a chunk on stream %v which does not exist.\n", chunk.Stream)
-				break
-			}
-			if stream.IsReserved() {
-				reserved <- chunk
 				break
 			}
 			sl := Streamlet{chunk.Stream, chunk.Source}

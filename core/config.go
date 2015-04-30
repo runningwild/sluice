@@ -126,8 +126,8 @@ type StreamConfig struct {
 	Broadcast bool
 }
 
-func (sc *StreamConfig) IsReserved() bool {
-	return sc.Id > StreamMaxUserDefined
+func (stream StreamId) IsReserved() bool {
+	return stream > StreamMaxUserDefined
 }
 
 // Config contains information for how to run the sluice network.
