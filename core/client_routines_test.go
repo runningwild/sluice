@@ -606,14 +606,13 @@ func TestClientRecvChunks(t *testing.T) {
 				for range toCore {
 				}
 			}()
+			config.MaxChunkDataSize = 100
 			var node core.NodeId = 777
 			stream := config.GetIdFromName("RO")
 			var chunks []core.Chunk
 			chunks = append(chunks, makeChunks(config, stream, node, 5, 95)...)
 			chunks = append(chunks, makeChunks(config, stream, node, 100, 100)...)
 			chunks = append(chunks, makeChunks(config, stream, node, 200, 100)...)
-			chunks = append(chunks, makeChunks(config, stream, node, 300, 100)...)
-			chunks = append(chunks, makeChunks(config, stream, node, 400, 100)...)
 			c := cmwc.MakeGoodCmwc()
 			c.Seed(123)
 			rng := rand.New(c)
@@ -627,8 +626,8 @@ func TestClientRecvChunks(t *testing.T) {
 			decoy := core.Chunk{Stream: config.GetIdFromName("UU")}
 			goldenSt := core.MakeSequenceTracker(stream, node, 5)
 			for len(chunks) > 0 {
-				// Send 100 chunks
-				for i := 0; i < 100 && len(chunks) > 0; i++ {
+				// Send 150 chunks
+				for i := 0; i < 150 && len(chunks) > 0; i++ {
 					select {
 					case fromHost <- chunks[0]:
 						goldenSt.AddSequenceId(chunks[0].Sequence)
@@ -654,7 +653,9 @@ func TestClientRecvChunks(t *testing.T) {
 						decoyCount++
 					}
 				}
-				So(len(confirmationChunks), ShouldBeGreaterThanOrEqualTo, 1)
+				// We want it to be greater than 1 because we want to test that independent chunks
+				// can be combined to get all of the information we want.
+				So(len(confirmationChunks), ShouldBeGreaterThan, 1)
 
 				var sts []*core.SequenceTracker
 				for _, chunk := range confirmationChunks {
@@ -668,19 +669,20 @@ func TestClientRecvChunks(t *testing.T) {
 				So(len(sts), ShouldBeGreaterThanOrEqualTo, 1)
 
 				coverage := make(map[core.SequenceId]bool)
+				goldCoverage := make(map[core.SequenceId]bool)
 				for _, st := range sts {
 					// Don't need to check MaxContiguous, all we really care about is whether
 					// Contains() is always correct.
 					for sequence := core.SequenceId(0); sequence < 500; sequence++ {
 						if st.Contains(sequence) {
-							So(goldenSt.Contains(sequence), ShouldBeTrue)
 							coverage[sequence] = true
+						}
+						if goldenSt.Contains(sequence) {
+							goldCoverage[sequence] = true
 						}
 					}
 				}
-				for sequence := core.SequenceId(0); sequence < 500; sequence++ {
-					So(coverage[sequence], ShouldEqual, goldenSt.Contains(sequence))
-				}
+				So(coverage, ShouldResemble, goldCoverage)
 			}
 		})
 

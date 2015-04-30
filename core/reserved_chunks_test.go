@@ -88,7 +88,7 @@ func TestTruncateChunks(t *testing.T) {
 
 func TestPositionChunks(t *testing.T) {
 	req := core.PositionUpdate{}
-	for i := 1; i < 100; i++ {
+	for i := 1; i < 10; i++ {
 		req[core.StreamId(i)] = core.SequenceId(i + 1)
 	}
 	Convey("The data that comes out of a position chunk is the same as the data that went into it.", t, func() {

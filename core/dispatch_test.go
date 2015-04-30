@@ -130,7 +130,7 @@ func TestSerializeAndParseChunks(t *testing.T) {
 			Stream:      1030,
 			Sequence:    1122,
 			Subsequence: 1,
-			Data:        []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Data:        []byte("aàáâäæãåā"),
 		},
 		core.Chunk{
 			Source:   23,
