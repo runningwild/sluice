@@ -431,8 +431,6 @@ func TestClientRecvChunks(t *testing.T) {
 			close(handlerIsDone)
 		}()
 
-		// TODO: Must check that we don't get packets from before config.Starts.
-
 		Convey("Unreserved chunks from fromHost get assembled into packets and sent to toCore.", func() {
 			go func() {
 				// This is just to make sure the routine doesn't block trying to send to the host.
@@ -441,6 +439,8 @@ func TestClientRecvChunks(t *testing.T) {
 			}()
 			go func() {
 				var chunks []core.Chunk
+				// The first packet is before the start of the stream, it should not get reported.
+				chunks = append(chunks, makeChunks(config, config.GetIdFromName("RO"), 777, 0, 5)...)
 				chunks = append(chunks, makeChunks(config, config.GetIdFromName("RO"), 777, 5, 5)...)
 				chunks = append(chunks, makeChunks(config, config.GetIdFromName("RO"), 778, 25, 5)...)
 				chunks = append(chunks, makeChunks(config, config.GetIdFromName("RO"), 777, 10, 5)...)
@@ -489,6 +489,8 @@ func TestClientRecvChunks(t *testing.T) {
 				// Send all but the first chunk for each packet.  Note that the last packet is more
 				// than MaxAge in the future from the first packet.
 				chunkSets := [][]core.Chunk{
+					// The first packet is before the start of the stream, it should not get reported.
+					makeChunks(config, stream, node, 0, 5),
 					makeChunks(config, stream, node, 5, 5),
 					makeChunks(config, stream, node, 10, 5),
 					makeChunks(config, stream, node, 15, 5),
@@ -501,8 +503,8 @@ func TestClientRecvChunks(t *testing.T) {
 						fromHost <- chunkSet[j]
 					}
 				}
-				// Finish the packets in this order: 1,2,0,4,3.  We should receive, in order, 1,2,4,3
-				for _, index := range []int{1, 2, 0, 4, 3} {
+				// Finish the packets in this order: 2,3,0,1,5,4.  We should receive, in order, 2,3,5,4
+				for _, index := range []int{2, 3, 0, 1, 5, 4} {
 					fromHost <- chunks[index]
 				}
 			}()
@@ -524,6 +526,8 @@ func TestClientRecvChunks(t *testing.T) {
 				var chunks []core.Chunk
 				// Send all but the first chunk for each packet
 				chunkSets := [][]core.Chunk{
+					// The first packet is before the start of the stream, it should not get reported.
+					makeChunks(config, stream, node, 0, 5),
 					makeChunks(config, stream, node, 5, 5),
 					makeChunks(config, stream, node, 10, 5),
 					makeChunks(config, stream, node, 15, 5),
@@ -536,8 +540,8 @@ func TestClientRecvChunks(t *testing.T) {
 						fromHost <- chunkSet[j]
 					}
 				}
-				// Finish the packets in this order: 1,2,0,4,3.  We should receive, in order, 1,2,4.
-				for _, index := range []int{1, 2, 0, 4, 3} {
+				// Finish the packets in this order: 2,3,0,1,5,4.  We should receive, in order, 2,3,5,4
+				for _, index := range []int{2, 3, 0, 1, 5, 4} {
 					fromHost <- chunks[index]
 				}
 			}()
@@ -556,6 +560,8 @@ func TestClientRecvChunks(t *testing.T) {
 			stream := config.GetIdFromName("RU")
 			go func() {
 				var chunks []core.Chunk
+				// The first packet is before the start of the stream, it should not get reported.
+				chunks = append(chunks, makeChunks(config, stream, node, 0, 5)...)
 				chunks = append(chunks, makeChunks(config, stream, node, 5, 5)...)
 				chunks = append(chunks, makeChunks(config, stream, node, 10, 5)...)
 				chunks = append(chunks, makeChunks(config, stream, node, 15, 5)...)
